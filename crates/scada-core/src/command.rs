@@ -52,6 +52,27 @@ impl ControlCommand {
     pub fn transition_to(&mut self, status: ControlCommandStatus) {
         self.status = status;
     }
+
+    pub fn requested(
+        command_id: &str,
+        idempotency_key: &str,
+        user_id: &str,
+        tag_id: &str,
+        requested_value: &str,
+        requested_at: &str,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            command_id: command_id.to_string(),
+            idempotency_key: idempotency_key.to_string(),
+            user_id: user_id.to_string(),
+            tag_id: tag_id.to_string(),
+            requested_value: requested_value.to_string(),
+            status: ControlCommandStatus::Requested,
+            requested_at: requested_at.to_string(),
+            timeout_ms,
+        }
+    }
 }
 
 #[cfg(test)]

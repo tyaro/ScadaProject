@@ -27,9 +27,11 @@
 - `driver-manager`
   - Raw Driver ValueからTag Valueへの正規化
   - sequence採番
+  - Driver書き込み応答からControlCommand状態への反映
 - `tag-server`
   - 最新値インメモリキャッシュ
   - 古いsequenceの破棄
+  - 書き込み可能タグの最小検証
 - `scada-core`
   - Raw Driver Value
   - Driver Write Request/Response
@@ -59,5 +61,10 @@
 - `cargo test`: 成功
 - `cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
+
+## 縦断テスト
+
+- `Mock Driver -> Driver Manager -> Tag Server` の値流れ: 成功
+- `Tag Server WritePolicy -> Mock Driver -> Driver Manager response handling` の書き込み流れ: 成功
 
 Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。

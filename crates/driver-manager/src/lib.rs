@@ -1,4 +1,5 @@
-use scada_core::driver::RawDriverValue;
+use scada_core::command::{ControlCommand, ControlCommandStatus};
+use scada_core::driver::{DriverWriteResponse, RawDriverValue};
 use scada_core::tag::TagValue;
 
 #[derive(Debug, Clone)]
@@ -6,6 +7,14 @@ pub struct ValueNormalizer {
     sequence: u64,
     scan_interval_ms: u64,
     stale_after_ms: u64,
+}
+
+pub fn apply_driver_write_response(command: &mut ControlCommand, response: &DriverWriteResponse) {
+    if response.accepted {
+        command.transition_to(ControlCommandStatus::DriverAck);
+    } else {
+        command.transition_to(ControlCommandStatus::Failed);
+    }
 }
 
 impl ValueNormalizer {
@@ -60,5 +69,22 @@ mod tests {
 
         assert_eq!(1, tag_value.sequence);
         assert_eq!("1970-01-01T00:00:01Z", tag_value.server_timestamp);
+    }
+
+    #[test]
+    fn accepted_driver_write_sets_driver_ack() {
+        let mut command = ControlCommand::requested(
+            "cmd-1",
+            "idem-1",
+            "operator",
+            "mock.running.001",
+            "true",
+            "1970-01-01T00:00:00Z",
+            3000,
+        );
+
+        apply_driver_write_response(&mut command, &DriverWriteResponse::accepted("cmd-1"));
+
+        assert_eq!(ControlCommandStatus::DriverAck, command.status);
     }
 }
