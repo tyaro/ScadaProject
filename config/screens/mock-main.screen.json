@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "screen_id": "mock-main",
+  "project_id": "demo",
+  "name": "Mock Main Screen",
+  "canvas_width": 1280,
+  "canvas_height": 720,
+  "objects": [
+    {
+      "object_id": "pump-001",
+      "svg_asset_id": "pump-symbol",
+      "x": 80,
+      "y": 120,
+      "width": 120,
+      "height": 120,
+      "tag_bindings": {
+        "state": "mock.running.001",
+        "value": "mock.temperature.001"
+      }
+    },
+    {
+      "object_id": "label-001",
+      "svg_asset_id": "text-label",
+      "x": 240,
+      "y": 140,
+      "width": 280,
+      "height": 48,
+      "tag_bindings": {
+        "value": "mock.temperature.001"
+      }
+    }
+  ]
+}

@@ -1,10 +1,13 @@
 use std::fmt;
+use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::path::Path;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagServerEndpoint {
@@ -48,6 +51,29 @@ pub struct RuntimeTagValue {
     pub write_status: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ScreenDefinition {
+    pub schema_version: String,
+    pub screen_id: String,
+    pub project_id: String,
+    pub name: String,
+    pub canvas_width: u32,
+    pub canvas_height: u32,
+    pub objects: Vec<ScreenObjectDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ScreenObjectDefinition {
+    pub object_id: String,
+    pub svg_asset_id: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub tag_bindings: std::collections::HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpClientResponse {
     pub status_code: u16,
@@ -61,6 +87,7 @@ pub enum RuntimeClientError {
     Io(String),
     Http(String),
     Json(String),
+    ScreenDefinition(String),
     ServerStatus {
         status_code: u16,
         reason: String,
@@ -189,6 +216,9 @@ impl fmt::Display for RuntimeClientError {
             Self::Io(message) => write!(formatter, "io error: {message}"),
             Self::Http(message) => write!(formatter, "http error: {message}"),
             Self::Json(message) => write!(formatter, "json error: {message}"),
+            Self::ScreenDefinition(message) => {
+                write!(formatter, "screen definition error: {message}")
+            }
             Self::ServerStatus {
                 status_code,
                 reason,
@@ -208,6 +238,31 @@ pub fn default_snapshot_tags() -> Vec<String> {
         "mock.temperature.001".to_string(),
         "mock.running.001".to_string(),
     ]
+}
+
+pub fn load_screen_definition(path: &Path) -> Result<ScreenDefinition, RuntimeClientError> {
+    let raw = fs::read_to_string(path).map_err(|error| {
+        RuntimeClientError::ScreenDefinition(format!("failed to read {}: {error}", path.display()))
+    })?;
+
+    serde_json::from_str(&raw).map_err(|error| {
+        RuntimeClientError::ScreenDefinition(format!("failed to parse {}: {error}", path.display()))
+    })
+}
+
+pub fn resolve_tag_ids_from_screen(definition: &ScreenDefinition) -> Vec<String> {
+    let mut resolved = Vec::new();
+    let mut seen = HashSet::new();
+
+    for object in &definition.objects {
+        for tag_id in object.tag_bindings.values() {
+            if seen.insert(tag_id.clone()) {
+                resolved.push(tag_id.clone());
+            }
+        }
+    }
+
+    resolved
 }
 
 pub fn format_snapshot_summary(snapshot: &TagSnapshot) -> String {
@@ -349,5 +404,52 @@ mod tests {
         assert!(summary.contains("snapshot values=1 missing=1"));
         assert!(summary.contains("mock.running.001 boolean Simulated true"));
         assert!(summary.contains("missing missing"));
+    }
+
+    #[test]
+    fn resolve_screen_tag_ids_deduplicates_preserving_first_seen() {
+        let definition = ScreenDefinition {
+            schema_version: "1.0.0".to_string(),
+            screen_id: "main".to_string(),
+            project_id: "demo".to_string(),
+            name: "Main".to_string(),
+            canvas_width: 1280,
+            canvas_height: 720,
+            objects: vec![
+                ScreenObjectDefinition {
+                    object_id: "obj-1".to_string(),
+                    svg_asset_id: "pump".to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 100.0,
+                    tag_bindings: std::collections::HashMap::from([
+                        ("value".to_string(), "mock.temperature.001".to_string()),
+                        ("state".to_string(), "mock.running.001".to_string()),
+                    ]),
+                },
+                ScreenObjectDefinition {
+                    object_id: "obj-2".to_string(),
+                    svg_asset_id: "label".to_string(),
+                    x: 120.0,
+                    y: 0.0,
+                    width: 100.0,
+                    height: 40.0,
+                    tag_bindings: std::collections::HashMap::from([(
+                        "value".to_string(),
+                        "mock.temperature.001".to_string(),
+                    )]),
+                },
+            ],
+        };
+
+        let tags = resolve_tag_ids_from_screen(&definition);
+        assert_eq!(
+            vec![
+                "mock.temperature.001".to_string(),
+                "mock.running.001".to_string()
+            ],
+            tags
+        );
     }
 }

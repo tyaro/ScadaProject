@@ -53,17 +53,21 @@
   - `serde` / `serde_json` による型付きsnapshot DTO
   - Tag Server REST API向け最小HTTPクライアント
   - `preview-runtime --snapshot`
+- 画面定義ベースの初期タグ取得実装
+  - 最小画面定義 `config/screens/mock-main.screen.json`
+  - `tag_bindings` からタグ一覧を解決
+  - `preview-runtime --snapshot-screen`
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
 
-- Runtime初期表示フローの準備
+- Runtime初期表示フローの拡張
 
 ## 次に行うこと
 
-1. 最小画面定義を追加し、画面が必要とするタグ一覧をRuntime側で解決する。
-2. 画面ランタイム用の初期タグ値取得フローを画面定義ベースで確認する。
-3. その後、MQTT over WebSocketによるdelta購読へ進む。
+1. snapshot結果を画面オブジェクト単位に投影する中間モデルを作る。
+2. MQTT over WebSocketのdelta受信とsequenceベース更新を追加する。
+3. REST snapshot + MQTT deltaの再接続整合を確認する。
 
 ## 最新検証
 
@@ -82,6 +86,7 @@
 - `curl POST /api/v1/tags/snapshot`: 成功
 - `curl POST /api/v1/control-commands`: 成功
 - `target/debug/preview-runtime --snapshot --tag-server http://127.0.0.1:18080 --project-id demo`: 成功
+- `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080`: 成功
 
 ## セーブポイント
 
@@ -97,7 +102,8 @@
 - `2012b5f feat: add local supervisor progress tracking`
 - `2f52046 feat: add tag server rest api`
 - `9f562c7 chore: update toolchains and version policy`
-- 今回の変更: `feat: add preview runtime snapshot client`
+- `80be2dd feat: add preview runtime snapshot client`
+- 今回の変更: `feat: add screen-based snapshot flow in preview runtime`
 
 ## 注意メモ
 
