@@ -2,7 +2,7 @@ use std::fmt;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
@@ -51,6 +51,12 @@ pub struct RuntimeControlCommandRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeScreenProjectionRequest {
+    #[serde(default)]
+    pub screen_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeTagValue {
     pub tag_id: String,
     pub value: Value,
@@ -90,21 +96,21 @@ pub struct ScreenObjectDefinition {
     pub tag_bindings: std::collections::HashMap<String, String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScreenProjection {
     pub screen_id: String,
     pub project_id: String,
     pub object_states: Vec<ScreenObjectState>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScreenObjectState {
     pub object_id: String,
     pub svg_asset_id: String,
     pub bindings: Vec<ObjectBindingState>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectBindingState {
     pub key: String,
     pub tag_id: String,
@@ -162,6 +168,7 @@ pub struct RuntimeHttpResponse {
 pub struct RuntimeApi {
     tag_server: TagServerClient,
     required_token: Option<String>,
+    default_screen_path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -383,11 +390,17 @@ impl RuntimeApi {
         Self {
             tag_server,
             required_token: None,
+            default_screen_path: PathBuf::from("config/screens/mock-main.screen.json"),
         }
     }
 
     pub fn with_required_token(mut self, token: Option<String>) -> Self {
         self.required_token = token.filter(|value| !value.is_empty());
+        self
+    }
+
+    pub fn with_default_screen_path(mut self, path: PathBuf) -> Self {
+        self.default_screen_path = path;
         self
     }
 
@@ -405,6 +418,7 @@ impl RuntimeApi {
 
         match (request.method.as_str(), request.path_without_query()) {
             ("POST", "/api/v1/control-commands") => self.handle_control_command(&request.body),
+            ("POST", "/api/v1/screens/projection") => self.handle_screen_projection(&request.body),
             _ => RuntimeHttpResponse::json(404, error_json("not found")),
         }
     }
@@ -442,6 +456,55 @@ impl RuntimeApi {
                 502,
                 error_json(&format!("tag server forwarding failed: {error}")),
             ),
+        }
+    }
+
+    fn handle_screen_projection(&self, body: &str) -> RuntimeHttpResponse {
+        let projection_request: RuntimeScreenProjectionRequest = if body.trim().is_empty() {
+            RuntimeScreenProjectionRequest { screen_path: None }
+        } else {
+            match serde_json::from_str(body) {
+                Ok(request) => request,
+                Err(error) => {
+                    return RuntimeHttpResponse::json(
+                        400,
+                        error_json(&format!("invalid screen projection JSON: {error}")),
+                    );
+                }
+            }
+        };
+        let screen_path = projection_request
+            .screen_path
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.default_screen_path.clone());
+        let definition = match load_screen_definition(&screen_path) {
+            Ok(definition) => definition,
+            Err(error) => return RuntimeHttpResponse::json(400, error_json(&error.to_string())),
+        };
+        let tag_ids = resolve_tag_ids_from_screen(&definition);
+        if tag_ids.is_empty() {
+            return RuntimeHttpResponse::json(
+                400,
+                error_json("screen definition does not contain tag bindings"),
+            );
+        }
+
+        let snapshot = match self
+            .tag_server
+            .fetch_snapshot(&definition.project_id, &tag_ids)
+        {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                return RuntimeHttpResponse::json(
+                    502,
+                    error_json(&format!("tag server snapshot failed: {error}")),
+                );
+            }
+        };
+        let projection = project_snapshot_to_screen(&definition, &snapshot);
+        match serde_json::to_string(&projection) {
+            Ok(body) => RuntimeHttpResponse::json(200, body),
+            Err(error) => RuntimeHttpResponse::json(500, error_json(&error.to_string())),
         }
     }
 }
@@ -1019,6 +1082,7 @@ fn status_reason(status_code: u16) -> &'static str {
         401 => "Unauthorized",
         404 => "Not Found",
         409 => "Conflict",
+        500 => "Internal Server Error",
         502 => "Bad Gateway",
         _ => "OK",
     }
@@ -1166,6 +1230,48 @@ mod tests {
 
         assert_eq!(202, response.status_code);
         assert!(response.body.contains("DriverAck"));
+    }
+
+    #[test]
+    fn runtime_api_returns_screen_projection_from_tag_snapshot() {
+        let screen_path = std::env::temp_dir().join(format!(
+            "scada-preview-runtime-screen-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &screen_path,
+            r#"{"schema_version":"1.0.0","screen_id":"main","project_id":"demo","name":"Main","canvas_width":1280,"canvas_height":720,"objects":[{"object_id":"pump-001","svg_asset_id":"pump","x":0.0,"y":0.0,"width":100.0,"height":100.0,"tag_bindings":{"state":"mock.running.001"}}]}"#,
+        )
+        .expect("write screen");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/tags/snapshot", request.path);
+            assert!(request.body.contains(r#""tag_ids":["mock.running.001"]"#));
+
+            let body = r#"{"values":[{"tag_id":"mock.running.001","value":true,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:01Z","server_timestamp":"1970-01-01T00:00:01Z","sequence":3,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}],"missing_tag_ids":[]}"#;
+            let response = RuntimeHttpResponse::json(200, body.to_string());
+            stream.write_all(&response.to_http_bytes()).expect("write");
+        });
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}")).expect("client"),
+        )
+        .with_default_screen_path(screen_path.clone());
+        let request = RuntimeHttpRequest::new("POST", "/api/v1/screens/projection", r#"{}"#);
+
+        let response = api.handle(&request);
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(200, response.status_code);
+        assert!(response.body.contains(r#""screen_id":"main""#));
+        assert!(response.body.contains(r#""object_id":"pump-001""#));
+        assert!(response.body.contains(r#""value":true"#));
+        assert!(response.body.contains(r#""sequence":3"#));
     }
 
     #[test]

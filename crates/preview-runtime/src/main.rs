@@ -25,6 +25,9 @@ fn main() {
         let tag_server_url = arg_value(&args, "--tag-server")
             .or_else(|| std::env::var(TAG_SERVER_URL_ENV).ok())
             .unwrap_or_else(|| "http://127.0.0.1:18080".to_string());
+        let screen_path = arg_value(&args, "--screen")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(DEFAULT_SCREEN_PATH));
         let token = arg_value(&args, "--token").or_else(|| std::env::var(LOCAL_TOKEN_ENV).ok());
         let client = match TagServerClient::from_base_url(&tag_server_url) {
             Ok(client) => client.with_token(token.clone()),
@@ -33,7 +36,9 @@ fn main() {
                 std::process::exit(1);
             }
         };
-        let api = RuntimeApi::new(client).with_required_token(token);
+        let api = RuntimeApi::new(client)
+            .with_required_token(token)
+            .with_default_screen_path(screen_path);
 
         eprintln!("preview-runtime listening on {addr}");
         if let Err(error) = run_runtime_server(&addr, &api) {

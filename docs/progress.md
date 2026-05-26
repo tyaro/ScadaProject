@@ -113,6 +113,12 @@
   - `SCADA_LOCAL_TOKEN` がある場合はPreview Runtime自身のAPI認証とTag Server転送認証に使用
   - 実プロセスで `Runtime REST API -> Tag Server -> Driver Manager -> Mock Driver` が `DriverAck` まで到達することを確認
   - `config/tauri-shell.services*.json` の `preview-runtime` を常駐REST APIとして起動する設定へ更新
+- Preview RuntimeのScreenProjection JSON API実装（最小版）
+  - `POST /api/v1/screens/projection` を追加
+  - Runtimeが画面定義を読み込み、Tag ServerからREST snapshotを取得して `ScreenProjection` JSONを返す
+  - `ScreenProjection` / `ScreenObjectState` / `ObjectBindingState` をSerialize対応
+  - `contracts/openapi/runtime.yaml` にprojection APIを追加
+  - 実プロセスで `Preview Runtime -> Tag Server snapshot -> ScreenProjection JSON` を確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -193,7 +199,7 @@
 
 ## 次に行うこと
 
-1. Svelte監視画面の最小表示へ向けて、`ScreenProjection` をUI向けJSONとして返すRuntime APIを追加する。
+1. Svelte監視画面の最小表示へ向けて、Runtime projection APIを読むフロントエンド最小画面を追加する。
 2. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
@@ -215,7 +221,7 @@
 - Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
 - Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
 - Runtime起点の書き込みREST APIは `Preview Runtime REST -> Tag Server -> Driver Manager -> Mock Driver` まで確認済み。
-- 画面表示はCLI上の `ScreenProjection` まで実装済み。Svelte監視画面向けにはRuntime APIとしてprojection JSONを返す境界が必要。
+- 画面表示はRuntime APIの `ScreenProjection` JSONまで実装済み。Svelte監視画面向けにはこのAPIを読む最小画面が必要。
 - Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
@@ -279,6 +285,14 @@
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 2 --supervise-summary-json`: 成功
   - `running=6`
   - `events=NONE`
+- `cargo test -p preview-runtime`（projection API追加後）: 成功
+- `target/debug/preview-runtime --serve --addr 127.0.0.1:18290 --tag-server http://127.0.0.1:18280`: 起動成功
+- `curl POST http://127.0.0.1:18290/api/v1/screens/projection -d '{}'`: 成功
+  - 応答 `200 OK`
+  - `screen_id=mock-main`
+  - `object_states` に `pump-001` / `label-001`
+  - `mock.temperature.001` / `mock.running.001` の値とquality/sequenceを確認
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`（projection API追加後）: 成功
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
