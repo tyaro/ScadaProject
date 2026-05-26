@@ -8,3 +8,7 @@ scada-core = { path = "../scada-core" }
 
 [lib]
 path = "src/lib.rs"
+
+[dev-dependencies]
+driver-manager = { path = "../driver-manager" }
+mock-driver = { path = "../mock-driver" }

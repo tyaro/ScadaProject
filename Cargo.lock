@@ -38,6 +38,8 @@ version = "0.1.0"
 name = "tag-server"
 version = "0.1.0"
 dependencies = [
+ "driver-manager",
+ "mock-driver",
  "scada-core",
 ]
 
