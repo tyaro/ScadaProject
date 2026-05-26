@@ -9,6 +9,10 @@
 - 初期設計ドキュメント作成
 - 開発計画書作成
 - エージェント向け指示ファイル作成
+- 開発ツール方針更新
+  - Rust latest stable
+  - Node.js 24 LTS
+  - ライブラリ、クレート、ツールは可能な限り最新安定版を使用
 - Rust workspace作成
 - 契約ファイル雛形作成
   - gRPC `.proto`
@@ -59,9 +63,13 @@
 
 ## 最新検証
 
+- `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
+- `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
+- `nvm use 24 && node --version`: `v24.16.0`
+- `nvm use 24 && npm --version`: `11.13.0`
 - `cargo fmt`: 成功
-- `CARGO_INCREMENTAL=0 cargo test`: 成功
-- `CARGO_INCREMENTAL=0 cargo build`: 成功
+- `cargo test`: 成功
+- `cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --supervise-once --bin-dir target/debug`: 成功
@@ -82,9 +90,13 @@
 - `0ad4c08 feat: add mock write flow primitives`
 - `81928f5 feat: add local runtime startup plan`
 - `2012b5f feat: add local supervisor progress tracking`
-- 今回の変更: `feat: add tag server rest api`
+- `2f52046 feat: add tag server rest api`
+- 今回の変更: `chore: update toolchains and version policy`
 
 ## 注意メモ
 
-- この環境のRust 1.66では増分コンパイルキャッシュでICEが発生したため、今回の検証は `CARGO_INCREMENTAL=0` 付きで実施した。
+- Rust 1.66で発生していた増分コンパイルキャッシュICEは、Rust 1.95.0へ更新後の通常 `cargo test` で再発していない。
+- rustup本体はx86_64エミュレーションだが、実際に使用される `rustc` と `cargo` は `aarch64-apple-darwin`。
+- HomebrewはmacOS 26.5を未対応扱いして失敗するため、Node 24 LTSはnvmで導入した。
+- Codexプロセスの既存PATHは起動時のNode 18を保持している場合がある。新規ログインシェルでは `.zprofile` 経由でnvm defaultのNode 24が有効になる。
 - ローカルポートbindとcurl確認はサンドボックス外権限で実施した。

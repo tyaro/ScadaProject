@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "crates/scada-core",
     "crates/builder-api",
@@ -8,4 +9,3 @@ members = [
     "crates/mock-driver",
     "crates/tauri-shell",
 ]
-

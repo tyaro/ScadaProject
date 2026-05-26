@@ -32,6 +32,8 @@ Agents must read the relevant design sections before making architecture or impl
 
 - Desktop shell: Tauri v2 + Rust.
 - Frontend: Svelte + TypeScript.
+- Rust toolchain: latest stable channel.
+- Node.js: 24 LTS.
 - Internal process communication: gRPC.
 - Client API: REST API.
 - Realtime client updates: MQTT over WebSocket.
@@ -61,6 +63,8 @@ Prefer the order in `docs/development_plan.md`:
 ## Coding Standards
 
 - Keep responsibilities separated by component boundary.
+- Prefer the latest stable compatible versions of libraries, crates, and tools.
+- If an older version is required, document the reason and the compatibility constraint in the same change.
 - Keep Tauri Rust code thin: process management, OS integration, window management, file selection, and local service supervision.
 - Put business logic in services such as Builder API, Tag Server, Runtime, Driver Manager, and Alarm Engine.
 - Define external and internal contracts before relying on implicit data shapes.
@@ -133,4 +137,3 @@ Update documentation when changing:
 - Prefer small, focused commits.
 - Do not mix unrelated refactors with feature work.
 - Before committing, check `git status --short`.
-
