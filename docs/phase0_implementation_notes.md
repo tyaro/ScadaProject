@@ -43,6 +43,8 @@
   - ローカルサービス一覧表示
   - ローカルサービスの `--health` 実行
   - `--bin-dir` 指定によるサービスバイナリ探索
+  - 起動時ローカルトークン生成
+  - `SCADA_LOCAL_TOKEN` と `SCADA_BIND_HOST` を含むサービス起動計画表示
 
 ## まだ実装しないもの
 
@@ -61,6 +63,7 @@
 - `cargo test`: 成功
 - `cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug`: 成功
 
 ## 縦断テスト
 

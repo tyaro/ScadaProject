@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use scada_core::service::{default_local_services, print_health, ServiceRole};
-use tauri_shell::{check_default_services, default_service_bin_dir};
+use tauri_shell::{
+    check_default_services, create_local_runtime_config, default_service_bin_dir, mask_token,
+    service_start_plan,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -49,6 +52,34 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|arg| arg == "--print-startup-token") {
+        let config = create_local_runtime_config("127.0.0.1");
+        println!("{}", config.startup_token);
+        return;
+    }
+    if args.iter().any(|arg| arg == "--print-service-plan") {
+        let bin_dir = match bin_dir_arg(&args) {
+            Some(path) => path,
+            None => std::env::current_exe()
+                .map(|path| default_service_bin_dir(&path))
+                .unwrap_or_else(|_| PathBuf::from(".")),
+        };
+        let bind_host = bind_host_arg(&args).unwrap_or_else(|| "127.0.0.1".to_string());
+        let config = create_local_runtime_config(&bind_host);
+
+        for item in service_start_plan(&bin_dir, &config) {
+            println!(
+                "{} {} {}={} {}={}",
+                item.service,
+                item.binary_path.display(),
+                item.bind_host_env.0,
+                item.bind_host_env.1,
+                item.token_env.0,
+                mask_token(&item.token_env.1)
+            );
+        }
+        return;
+    }
 
     println!("tauri-shell skeleton");
 }
@@ -57,4 +88,10 @@ fn bin_dir_arg(args: &[String]) -> Option<PathBuf> {
     args.windows(2)
         .find(|pair| pair[0] == "--bin-dir")
         .map(|pair| PathBuf::from(&pair[1]))
+}
+
+fn bind_host_arg(args: &[String]) -> Option<String> {
+    args.windows(2)
+        .find(|pair| pair[0] == "--bind-host")
+        .map(|pair| pair[1].clone())
 }

@@ -1,13 +1,24 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use scada_core::service::{default_local_services, LocalServiceSpec};
+use scada_core::service::{
+    default_local_services, generate_startup_token, LocalRuntimeConfig, LocalServiceSpec,
+    LOCAL_BIND_HOST_ENV, LOCAL_TOKEN_ENV,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceHealthResult {
     pub service: String,
     pub healthy: bool,
     pub output: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceStartPlan {
+    pub service: String,
+    pub binary_path: PathBuf,
+    pub bind_host_env: (&'static str, String),
+    pub token_env: (&'static str, String),
 }
 
 pub fn default_service_bin_dir(current_exe: &Path) -> PathBuf {
@@ -65,6 +76,31 @@ pub fn check_default_services(bin_dir: &Path) -> Vec<ServiceHealthResult> {
         .collect()
 }
 
+pub fn create_local_runtime_config(bind_host: &str) -> LocalRuntimeConfig {
+    LocalRuntimeConfig::new(bind_host, generate_startup_token())
+}
+
+pub fn service_start_plan(bin_dir: &Path, config: &LocalRuntimeConfig) -> Vec<ServiceStartPlan> {
+    config
+        .services
+        .iter()
+        .map(|service| ServiceStartPlan {
+            service: service.role.as_str().to_string(),
+            binary_path: service_binary_path(bin_dir, service),
+            bind_host_env: (LOCAL_BIND_HOST_ENV, config.bind_host.clone()),
+            token_env: (LOCAL_TOKEN_ENV, config.startup_token.clone()),
+        })
+        .collect()
+}
+
+pub fn mask_token(token: &str) -> String {
+    if token.len() <= 8 {
+        return "****".to_string();
+    }
+
+    format!("{}...{}", &token[..6], &token[token.len() - 4..])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +134,31 @@ mod tests {
         let path = service_binary_path(Path::new("/tmp/scada"), &service());
 
         assert_eq!(PathBuf::from("/tmp/scada/tag-server"), path);
+    }
+
+    #[test]
+    fn service_plan_sets_bind_host_and_token_env() {
+        let config = LocalRuntimeConfig {
+            bind_host: "127.0.0.1".to_string(),
+            startup_token: "secret-token".to_string(),
+            services: vec![service()],
+        };
+
+        let plan = service_start_plan(Path::new("/tmp/scada"), &config);
+
+        assert_eq!(1, plan.len());
+        assert_eq!(
+            (LOCAL_BIND_HOST_ENV, "127.0.0.1".to_string()),
+            plan[0].bind_host_env
+        );
+        assert_eq!(
+            (LOCAL_TOKEN_ENV, "secret-token".to_string()),
+            plan[0].token_env
+        );
+    }
+
+    #[test]
+    fn token_mask_hides_middle() {
+        assert_eq!("local-...abcd", mask_token("local-secret-abcd"));
     }
 }
