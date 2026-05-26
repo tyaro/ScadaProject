@@ -58,6 +58,9 @@
     - MQTT tag value topicとpayloadの整合確認
     - sequenceが新しいdeltaのみ投影へ適用
     - stale deltaの破棄
+  - rumqttベースのMQTT入出力
+    - `--mqtt-receive-once` による単発受信
+    - `--mqtt-publish-delta` による単発配信
 - `tauri-shell`
   - ローカルサービス一覧表示
   - ローカルサービスの `--health` 実行
@@ -71,11 +74,11 @@
 - 実gRPCサーバー
 - 本番向けRESTフレームワーク化
 - SurrealDB接続
-- MQTT Broker接続
+- MQTT常時購読ループの本統合
 - Tauri v2アプリ本体
 
 RESTサーバーは、依存追加前の最小実装として `tag-server --serve` まで追加済み。
-今後はRuntime/Builder境界、SurrealDB接続、MQTT Broker接続、Tauri v2アプリ本体を順に実装する。
+今後はRuntime/Builder境界、SurrealDB接続、MQTT常時購読ループ統合、Tauri v2アプリ本体を順に実装する。
 
 ## 検証状況
 
@@ -94,6 +97,7 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080`: 成功
 - `--snapshot-screen` の投影サマリー出力: 成功
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --simulate-delta`: 成功
+- `cargo test` (rumqtt追加後): 成功
 
 ## 縦断テスト
 
@@ -103,6 +107,7 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
 - `Screen Definition -> Tag resolve -> Tag Server REST snapshot -> Preview Runtime` の初期値取得: 成功
 - `Screen Definition + TagSnapshot -> ScreenProjection` のオブジェクト投影: 成功
 - `MQTT tag value delta -> ScreenProjection` のsequence適用: 成功
+- `rumqtt publish/receive (単発CLI)` の経路: 実装済み（Broker実接続の常時購読は次フェーズ）
 
 Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。
 Rust 1.66の増分コンパイルキャッシュでICEが発生していたが、Rust 1.95.0更新後は通常の `cargo test` が成功している。

@@ -1,10 +1,12 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use preview_runtime::{
     apply_delta_to_projection, default_snapshot_tags, format_delta_apply_result,
     format_screen_projection_summary, format_snapshot_summary, load_screen_definition,
-    parse_tag_value_delta, project_snapshot_to_screen, resolve_tag_ids_from_screen,
-    TagServerClient,
+    parse_tag_value_delta, project_snapshot_to_screen, publish_delta_via_mqtt,
+    receive_delta_once_via_mqtt, resolve_tag_ids_from_screen, MqttConnectionConfig,
+    RuntimeTagValue, TagServerClient,
 };
 use scada_core::service::{print_health, ServiceRole, LOCAL_TOKEN_ENV};
 
@@ -118,6 +120,53 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|arg| arg == "--mqtt-receive-once") {
+        let project_id = arg_value(&args, "--project-id").unwrap_or_else(|| "demo".to_string());
+        let config = mqtt_config_from_args(&args, "preview-runtime-recv");
+        match receive_delta_once_via_mqtt(&config, &project_id) {
+            Ok(delta) => {
+                println!("mqtt received topic={}", delta.topic);
+                println!(
+                    "{} {} {} {}",
+                    delta.value.tag_id,
+                    delta.value.data_type,
+                    delta.value.quality,
+                    delta.value.value
+                );
+            }
+            Err(error) => {
+                eprintln!("preview-runtime mqtt-receive-once failed: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    if args.iter().any(|arg| arg == "--mqtt-publish-delta") {
+        let project_id = arg_value(&args, "--project-id").unwrap_or_else(|| "demo".to_string());
+        let config = mqtt_config_from_args(&args, "preview-runtime-pub");
+        let payload = arg_value(&args, "--delta-payload").unwrap_or_else(|| {
+            r#"{"tag_id":"mock.running.001","value":true,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:02Z","server_timestamp":"1970-01-01T00:00:02Z","sequence":2,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}"#.to_string()
+        });
+        let delta: RuntimeTagValue = match serde_json::from_str(&payload) {
+            Ok(delta) => delta,
+            Err(error) => {
+                eprintln!("preview-runtime mqtt-publish-delta failed: invalid payload: {error}");
+                std::process::exit(1);
+            }
+        };
+
+        match publish_delta_via_mqtt(&config, &delta, &project_id) {
+            Ok(()) => println!(
+                "mqtt published tag={} seq={} project={}",
+                delta.tag_id, delta.sequence, project_id
+            ),
+            Err(error) => {
+                eprintln!("preview-runtime mqtt-publish-delta failed: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     println!("preview-runtime skeleton");
 }
@@ -133,4 +182,25 @@ fn arg_values(args: &[String], name: &str) -> Vec<String> {
         .filter(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
         .collect()
+}
+
+fn mqtt_config_from_args(args: &[String], client_prefix: &str) -> MqttConnectionConfig {
+    let host = arg_value(args, "--mqtt-host").unwrap_or_else(|| "127.0.0.1".to_string());
+    let port = arg_value(args, "--mqtt-port")
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(1883);
+    let timeout_secs = arg_value(args, "--mqtt-timeout-secs")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(5);
+    let client_id = arg_value(args, "--mqtt-client-id")
+        .unwrap_or_else(|| format!("{client_prefix}-{}", std::process::id()));
+    let use_websocket = args.iter().any(|arg| arg == "--mqtt-websocket");
+
+    MqttConnectionConfig {
+        host,
+        port,
+        use_websocket,
+        client_id,
+        timeout: Duration::from_secs(timeout_secs),
+    }
 }

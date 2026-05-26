@@ -66,17 +66,22 @@
   - sequenceが新しいdeltaのみ投影へ適用
   - stale deltaの破棄
   - `preview-runtime --snapshot-screen --simulate-delta`
+- rumqttベースのMQTT入出力基盤実装
+  - `preview-runtime --mqtt-receive-once`
+  - `preview-runtime --mqtt-publish-delta`
+  - topic/payload検証を既存delta適用ロジックへ統合
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
 
-- MQTT over WebSocket実接続の準備
+- Preview RuntimeのMQTT受信ループ統合
+- 再接続時のsnapshot再同期ルール整理
 
 ## 次に行うこと
 
-1. MQTT Broker選定とローカル起動方式を決める。
-2. MQTT over WebSocketの購読クライアントをPreview Runtimeへ追加する。
-3. REST snapshot + MQTT deltaの再接続整合を確認する。
+1. rumqtt受信ループを `--snapshot-screen` フローへ統合する。
+2. 再接続時にREST snapshotで再同期し、その後delta購読へ復帰する。
+3. 外部Broker対応に向けた接続設定抽象を整理する。
 
 ## 最新検証
 
@@ -98,6 +103,7 @@
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080`: 成功
 - `--snapshot-screen` で投影サマリー出力確認: 成功
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --simulate-delta`: 成功
+- `cargo test` (rumqtt追加後): 成功
 
 ## セーブポイント
 
@@ -117,6 +123,7 @@
 - `ae7da7f feat: add screen-based snapshot flow in preview runtime`
 - `a3b91d9 feat: add screen projection model for runtime snapshot`
 - 今回の変更: `feat: add runtime delta application foundation`
+- 未コミット変更: `feat: add rumqtt mqtt receive/publish commands in preview runtime`
 
 ## 注意メモ
 

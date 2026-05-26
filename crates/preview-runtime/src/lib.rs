@@ -5,10 +5,13 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
+use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
 use scada_core::mqtt::tag_value_topic;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use tokio::runtime::Runtime;
+use tokio::time::{self, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagServerEndpoint {
@@ -35,7 +38,7 @@ pub struct TagSnapshot {
     pub missing_tag_ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeTagValue {
     pub tag_id: String,
     pub value: Value,
@@ -114,6 +117,15 @@ pub struct DeltaApplyResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MqttConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub use_websocket: bool,
+    pub client_id: String,
+    pub timeout: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpClientResponse {
     pub status_code: u16,
     pub reason: String,
@@ -128,6 +140,7 @@ pub enum RuntimeClientError {
     Json(String),
     MqttDelta(String),
     ScreenDefinition(String),
+    Runtime(String),
     ServerStatus {
         status_code: u16,
         reason: String,
@@ -260,6 +273,7 @@ impl fmt::Display for RuntimeClientError {
             Self::ScreenDefinition(message) => {
                 write!(formatter, "screen definition error: {message}")
             }
+            Self::Runtime(message) => write!(formatter, "runtime error: {message}"),
             Self::ServerStatus {
                 status_code,
                 reason,
@@ -496,6 +510,96 @@ pub fn format_delta_apply_result(result: &DeltaApplyResult) -> String {
         result.ignored_stale_bindings,
         result.affected_object_ids.join(",")
     )
+}
+
+pub fn mqtt_tag_value_topic_filter(project_id: &str) -> String {
+    format!("scada/{project_id}/tag/+/value")
+}
+
+pub fn receive_delta_once_via_mqtt(
+    config: &MqttConnectionConfig,
+    project_id: &str,
+) -> Result<RuntimeDeltaMessage, RuntimeClientError> {
+    let runtime = Runtime::new().map_err(|error| RuntimeClientError::Runtime(error.to_string()))?;
+    runtime.block_on(receive_delta_once_via_mqtt_async(config, project_id))
+}
+
+pub fn publish_delta_via_mqtt(
+    config: &MqttConnectionConfig,
+    delta: &RuntimeTagValue,
+    project_id: &str,
+) -> Result<(), RuntimeClientError> {
+    let runtime = Runtime::new().map_err(|error| RuntimeClientError::Runtime(error.to_string()))?;
+    runtime.block_on(publish_delta_via_mqtt_async(config, delta, project_id))
+}
+
+async fn receive_delta_once_via_mqtt_async(
+    config: &MqttConnectionConfig,
+    project_id: &str,
+) -> Result<RuntimeDeltaMessage, RuntimeClientError> {
+    let mut options = mqtt_options(config);
+    options.set_keep_alive(Duration::from_secs(5));
+
+    let (client, mut eventloop) = AsyncClient::new(options, 16);
+    client
+        .subscribe(mqtt_tag_value_topic_filter(project_id), QoS::AtMostOnce)
+        .await
+        .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+
+    let deadline = Instant::now() + config.timeout;
+    loop {
+        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+            return Err(RuntimeClientError::MqttDelta(
+                "timed out while waiting for delta".to_string(),
+            ));
+        };
+        let event = time::timeout(remaining, eventloop.poll())
+            .await
+            .map_err(|_| {
+                RuntimeClientError::MqttDelta("timed out while waiting for delta".to_string())
+            })?
+            .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+
+        if let Event::Incoming(Packet::Publish(publish)) = event {
+            let payload = String::from_utf8(publish.payload.to_vec())
+                .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+            return parse_tag_value_delta(project_id, &publish.topic, &payload);
+        }
+    }
+}
+
+async fn publish_delta_via_mqtt_async(
+    config: &MqttConnectionConfig,
+    delta: &RuntimeTagValue,
+    project_id: &str,
+) -> Result<(), RuntimeClientError> {
+    let mut options = mqtt_options(config);
+    options.set_keep_alive(Duration::from_secs(5));
+    let (client, mut eventloop) = AsyncClient::new(options, 16);
+    let topic = tag_value_topic(project_id, &delta.tag_id);
+    let payload =
+        serde_json::to_vec(delta).map_err(|error| RuntimeClientError::Json(error.to_string()))?;
+
+    client
+        .publish(topic, QoS::AtMostOnce, false, payload)
+        .await
+        .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+
+    // Drive the eventloop briefly so the queued publish request is sent.
+    for _ in 0..5 {
+        match time::timeout(Duration::from_millis(200), eventloop.poll()).await {
+            Ok(Ok(_)) => continue,
+            Ok(Err(error)) => return Err(RuntimeClientError::MqttDelta(error.to_string())),
+            Err(_) => break,
+        }
+    }
+    Ok(())
+}
+
+fn mqtt_options(config: &MqttConnectionConfig) -> MqttOptions {
+    let options = MqttOptions::new(&config.client_id, &config.host, config.port);
+    let _ = config.use_websocket;
+    options
 }
 
 fn build_http_request(
@@ -798,6 +902,14 @@ mod tests {
         assert_eq!(
             Some(Value::from(21.0)),
             projection.object_states[0].bindings[1].value
+        );
+    }
+
+    #[test]
+    fn mqtt_topic_filter_matches_design() {
+        assert_eq!(
+            "scada/demo/tag/+/value",
+            mqtt_tag_value_topic_filter("demo")
         );
     }
 }
