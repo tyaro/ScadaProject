@@ -1,0 +1,42 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.svelte-kit/
+.vite/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Local databases and runtime state
+*.db
+*.sqlite
+*.sqlite3
+*.surrealdb
+data/
+runtime/
+
+# Temporary files
+tmp/
+temp/
+.cache/
