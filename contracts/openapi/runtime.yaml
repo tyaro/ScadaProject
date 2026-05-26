@@ -9,6 +9,18 @@ paths:
       responses:
         "200":
           description: Runtime is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  status:
+                    type: string
+                required:
+                  - service
+                  - status
   /api/v1/tags/snapshot:
     post:
       summary: Fetch latest tag snapshot for a screen or tag list
@@ -40,6 +52,17 @@ paths:
                     type: array
                     items:
                       $ref: "../schemas/tag-value.schema.json"
+                  missing_tag_ids:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - values
+                  - missing_tag_ids
+        "400":
+          description: Invalid snapshot request
+        "401":
+          description: Local API token is missing or invalid
   /api/v1/control-commands:
     post:
       summary: Request a tag write/control command
@@ -52,4 +75,32 @@ paths:
       responses:
         "202":
           description: Control command accepted
-
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  command:
+                    $ref: "../schemas/control-command.schema.json"
+                  driver_request:
+                    type: object
+                    properties:
+                      command_id:
+                        type: string
+                      tag_id:
+                        type: string
+                      value:
+                        type: string
+                    required:
+                      - command_id
+                      - tag_id
+                      - value
+                required:
+                  - command
+                  - driver_request
+        "400":
+          description: Invalid control command request
+        "401":
+          description: Local API token is missing or invalid
+        "409":
+          description: Control command rejected by write policy

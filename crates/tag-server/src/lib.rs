@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 
 use scada_core::command::{ControlCommand, ControlCommandStatus};
 use scada_core::driver::DriverWriteRequest;
-use scada_core::tag::TagValue;
+use scada_core::tag::{QualityCode, TagValue, TagValueData};
 
 #[derive(Debug, Default)]
 pub struct InMemoryTagCache {
@@ -12,6 +14,29 @@ pub struct InMemoryTagCache {
 #[derive(Debug, Default)]
 pub struct WritePolicy {
     writable_tags: HashMap<String, bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpResponse {
+    pub status_code: u16,
+    pub reason: &'static str,
+    pub content_type: &'static str,
+    pub body: String,
+}
+
+#[derive(Debug)]
+pub struct TagServerApi {
+    cache: InMemoryTagCache,
+    write_policy: WritePolicy,
+    required_token: Option<String>,
 }
 
 impl WritePolicy {
@@ -44,6 +69,65 @@ impl WritePolicy {
             tag_id: command.tag_id.clone(),
             value: command.requested_value.clone(),
         })
+    }
+}
+
+impl HttpRequest {
+    pub fn new(method: &str, path: &str, body: &str) -> Self {
+        Self {
+            method: method.to_string(),
+            path: path.to_string(),
+            headers: Vec::new(),
+            body: body.to_string(),
+        }
+    }
+
+    pub fn with_header(mut self, name: &str, value: &str) -> Self {
+        self.headers.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn path_without_query(&self) -> &str {
+        self.path.split('?').next().unwrap_or(&self.path)
+    }
+}
+
+impl HttpResponse {
+    pub fn json(status_code: u16, body: String) -> Self {
+        Self {
+            status_code,
+            reason: status_reason(status_code),
+            content_type: "application/json",
+            body,
+        }
+    }
+
+    pub fn text(status_code: u16, body: &str) -> Self {
+        Self {
+            status_code,
+            reason: status_reason(status_code),
+            content_type: "text/plain; charset=utf-8",
+            body: body.to_string(),
+        }
+    }
+
+    pub fn to_http_bytes(&self) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            self.status_code,
+            self.reason,
+            self.content_type,
+            self.body.as_bytes().len(),
+            self.body
+        )
+        .into_bytes()
     }
 }
 
@@ -80,10 +164,502 @@ impl InMemoryTagCache {
     }
 }
 
+impl TagServerApi {
+    pub fn new(cache: InMemoryTagCache, write_policy: WritePolicy) -> Self {
+        Self {
+            cache,
+            write_policy,
+            required_token: None,
+        }
+    }
+
+    pub fn phase0_mock() -> Self {
+        let mut cache = InMemoryTagCache::new();
+        cache.ingest(phase0_tag_value(
+            "mock.temperature.001",
+            TagValueData::Float(21.0),
+        ));
+        cache.ingest(phase0_tag_value(
+            "mock.running.001",
+            TagValueData::Boolean(false),
+        ));
+
+        Self::new(cache, WritePolicy::new().allow_tag("mock.running.001"))
+    }
+
+    pub fn with_required_token(mut self, token: Option<String>) -> Self {
+        self.required_token = token.filter(|value| !value.is_empty());
+        self
+    }
+
+    pub fn handle(&mut self, request: &HttpRequest) -> HttpResponse {
+        if request.method == "GET" && request.path_without_query() == "/health" {
+            return HttpResponse::json(
+                200,
+                r#"{"service":"tag-server","status":"healthy"}"#.to_string(),
+            );
+        }
+
+        if !self.is_authorized(request) {
+            return HttpResponse::json(401, error_json("unauthorized"));
+        }
+
+        match (request.method.as_str(), request.path_without_query()) {
+            ("POST", "/api/v1/tags/snapshot") => self.handle_snapshot(&request.body),
+            ("POST", "/api/v1/control-commands") => self.handle_control_command(&request.body),
+            _ => HttpResponse::json(404, error_json("not found")),
+        }
+    }
+
+    fn is_authorized(&self, request: &HttpRequest) -> bool {
+        let Some(token) = &self.required_token else {
+            return true;
+        };
+
+        request.header("x-scada-token") == Some(token.as_str())
+            || request
+                .header("authorization")
+                .map(|value| value == format!("Bearer {token}"))
+                .unwrap_or(false)
+    }
+
+    fn handle_snapshot(&self, body: &str) -> HttpResponse {
+        let tag_ids = match extract_json_string_array(body, "tag_ids") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+
+        let mut values = Vec::new();
+        let mut missing = Vec::new();
+
+        for tag_id in tag_ids {
+            match self.cache.get(&tag_id) {
+                Some(value) => values.push(tag_value_to_json(value)),
+                None => missing.push(json_string(&tag_id)),
+            }
+        }
+
+        HttpResponse::json(
+            200,
+            format!(
+                r#"{{"values":[{}],"missing_tag_ids":[{}]}}"#,
+                values.join(","),
+                missing.join(",")
+            ),
+        )
+    }
+
+    fn handle_control_command(&mut self, body: &str) -> HttpResponse {
+        let command_id = match extract_json_string(body, "command_id") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let idempotency_key = match extract_json_string(body, "idempotency_key") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let user_id = match extract_json_string(body, "user_id") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let tag_id = match extract_json_string(body, "tag_id") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let requested_value = match extract_json_value_as_string(body, "requested_value") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let requested_at = match extract_json_string(body, "requested_at") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let timeout_ms = match extract_json_u64(body, "timeout_ms") {
+            Ok(value) => value,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+
+        let mut command = ControlCommand::requested(
+            &command_id,
+            &idempotency_key,
+            &user_id,
+            &tag_id,
+            &requested_value,
+            &requested_at,
+            timeout_ms,
+        );
+
+        match self.write_policy.validate(&mut command) {
+            Ok(driver_request) => HttpResponse::json(
+                202,
+                format!(
+                    r#"{{"command":{},"driver_request":{}}}"#,
+                    control_command_to_json(&command),
+                    driver_write_request_to_json(&driver_request)
+                ),
+            ),
+            Err(error) => HttpResponse::json(
+                409,
+                format!(
+                    r#"{{"error":{},"command":{}}}"#,
+                    json_string(&error),
+                    control_command_to_json(&command)
+                ),
+            ),
+        }
+    }
+}
+
+pub fn run_server(addr: &str, api: &mut TagServerApi) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => handle_stream(&mut stream, api)?,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(())
+}
+
+pub fn serve_one(listener: TcpListener, api: &mut TagServerApi) -> std::io::Result<()> {
+    let (mut stream, _) = listener.accept()?;
+    handle_stream(&mut stream, api)
+}
+
+pub fn parse_http_request(raw: &str) -> Result<HttpRequest, String> {
+    let Some((head, body)) = raw.split_once("\r\n\r\n") else {
+        return Err("missing http header terminator".to_string());
+    };
+    let mut lines = head.lines();
+    let request_line = lines
+        .next()
+        .ok_or_else(|| "missing http request line".to_string())?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| "missing http method".to_string())?
+        .to_string();
+    let path = parts
+        .next()
+        .ok_or_else(|| "missing http path".to_string())?
+        .to_string();
+
+    let mut request = HttpRequest::new(&method, &path, body);
+    for line in lines {
+        if let Some((name, value)) = line.split_once(':') {
+            request = request.with_header(name.trim(), value.trim());
+        }
+    }
+
+    Ok(request)
+}
+
+fn handle_stream(stream: &mut TcpStream, api: &mut TagServerApi) -> std::io::Result<()> {
+    let request = match read_http_request(stream) {
+        Ok(request) => request,
+        Err(error) => {
+            let response = HttpResponse::text(400, &error.to_string());
+            stream.write_all(&response.to_http_bytes())?;
+            return Ok(());
+        }
+    };
+    let response = api.handle(&request);
+    stream.write_all(&response.to_http_bytes())
+}
+
+fn read_http_request(stream: &mut TcpStream) -> std::io::Result<HttpRequest> {
+    let mut buffer = Vec::new();
+    let mut chunk = [0; 1024];
+    let mut header_end = None;
+
+    while header_end.is_none() {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        header_end = find_header_end(&buffer);
+
+        if buffer.len() > 64 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "http header too large",
+            ));
+        }
+    }
+
+    let Some(header_end) = header_end else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "incomplete http request",
+        ));
+    };
+
+    let header = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    let content_length = content_length(&header);
+    let expected_len = header_end + 4 + content_length;
+
+    while buffer.len() < expected_len {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+
+    let raw = String::from_utf8_lossy(&buffer[..buffer.len().min(expected_len)]).to_string();
+    parse_http_request(&raw).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("bad request: {error}"),
+        )
+    })
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn content_length(header: &str) -> usize {
+    header
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0)
+}
+
+fn status_reason(status_code: u16) -> &'static str {
+    match status_code {
+        200 => "OK",
+        202 => "Accepted",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        409 => "Conflict",
+        _ => "OK",
+    }
+}
+
+fn phase0_tag_value(tag_id: &str, value: TagValueData) -> TagValue {
+    TagValue {
+        tag_id: tag_id.to_string(),
+        value,
+        quality: QualityCode::Simulated,
+        source_timestamp: "1970-01-01T00:00:00Z".to_string(),
+        server_timestamp: "1970-01-01T00:00:00Z".to_string(),
+        sequence: 1,
+        scan_interval_ms: 1000,
+        stale_after_ms: 3000,
+        driver_id: "mock-driver".to_string(),
+        endpoint_id: "mock-endpoint".to_string(),
+        read_status: "ok".to_string(),
+        write_status: "idle".to_string(),
+    }
+}
+
+fn tag_value_to_json(value: &TagValue) -> String {
+    format!(
+        r#"{{"tag_id":{},"value":{},"data_type":{},"quality":{},"source_timestamp":{},"server_timestamp":{},"sequence":{},"scan_interval_ms":{},"stale_after_ms":{},"driver_id":{},"endpoint_id":{},"read_status":{},"write_status":{}}}"#,
+        json_string(&value.tag_id),
+        tag_value_data_to_json(&value.value),
+        json_string(value.value.data_type().as_str()),
+        json_string(value.quality.as_str()),
+        json_string(&value.source_timestamp),
+        json_string(&value.server_timestamp),
+        value.sequence,
+        value.scan_interval_ms,
+        value.stale_after_ms,
+        json_string(&value.driver_id),
+        json_string(&value.endpoint_id),
+        json_string(&value.read_status),
+        json_string(&value.write_status),
+    )
+}
+
+fn tag_value_data_to_json(value: &TagValueData) -> String {
+    match value {
+        TagValueData::Boolean(value) => value.to_string(),
+        TagValueData::Integer(value) => value.to_string(),
+        TagValueData::Float(value) if value.is_finite() => value.to_string(),
+        TagValueData::Float(_) => "null".to_string(),
+        TagValueData::String(value) => json_string(value),
+    }
+}
+
+fn control_command_to_json(command: &ControlCommand) -> String {
+    format!(
+        r#"{{"command_id":{},"idempotency_key":{},"user_id":{},"tag_id":{},"requested_value":{},"status":{},"requested_at":{},"timeout_ms":{}}}"#,
+        json_string(&command.command_id),
+        json_string(&command.idempotency_key),
+        json_string(&command.user_id),
+        json_string(&command.tag_id),
+        json_string(&command.requested_value),
+        json_string(command.status.as_str()),
+        json_string(&command.requested_at),
+        command.timeout_ms,
+    )
+}
+
+fn driver_write_request_to_json(request: &DriverWriteRequest) -> String {
+    format!(
+        r#"{{"command_id":{},"tag_id":{},"value":{}}}"#,
+        json_string(&request.command_id),
+        json_string(&request.tag_id),
+        json_string(&request.value)
+    )
+}
+
+fn error_json(message: &str) -> String {
+    format!(r#"{{"error":{}}}"#, json_string(message))
+}
+
+fn json_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len() + 2);
+    escaped.push('"');
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped.push('"');
+    escaped
+}
+
+fn extract_json_string_array(body: &str, key: &str) -> Result<Vec<String>, String> {
+    let value = json_value_after_key(body, key)?;
+    let bytes = value.as_bytes();
+    let mut index = skip_ws(bytes, 0);
+
+    if bytes.get(index) != Some(&b'[') {
+        return Err(format!("{key} must be an array"));
+    }
+    index += 1;
+
+    let mut values = Vec::new();
+    loop {
+        index = skip_ws(bytes, index);
+        match bytes.get(index) {
+            Some(b']') => return Ok(values),
+            Some(b'"') => {
+                let (value, next_index) = parse_json_string_at(value, index)?;
+                values.push(value);
+                index = skip_ws(bytes, next_index);
+                match bytes.get(index) {
+                    Some(b',') => index += 1,
+                    Some(b']') => return Ok(values),
+                    _ => return Err(format!("{key} array must contain strings")),
+                }
+            }
+            _ => return Err(format!("{key} array must contain strings")),
+        }
+    }
+}
+
+fn extract_json_string(body: &str, key: &str) -> Result<String, String> {
+    let value = json_value_after_key(body, key)?;
+    let bytes = value.as_bytes();
+    let index = skip_ws(bytes, 0);
+    if bytes.get(index) != Some(&b'"') {
+        return Err(format!("{key} must be a string"));
+    }
+
+    parse_json_string_at(value, index).map(|(value, _)| value)
+}
+
+fn extract_json_value_as_string(body: &str, key: &str) -> Result<String, String> {
+    let value = json_value_after_key(body, key)?;
+    let bytes = value.as_bytes();
+    let index = skip_ws(bytes, 0);
+
+    if bytes.get(index) == Some(&b'"') {
+        return parse_json_string_at(value, index).map(|(value, _)| value);
+    }
+
+    let end = bytes[index..]
+        .iter()
+        .position(|byte| matches!(byte, b',' | b'}' | b'\r' | b'\n'))
+        .map(|offset| index + offset)
+        .unwrap_or(value.len());
+    let scalar = value[index..end].trim();
+    if scalar.is_empty() {
+        return Err(format!("{key} is empty"));
+    }
+
+    Ok(scalar.to_string())
+}
+
+fn extract_json_u64(body: &str, key: &str) -> Result<u64, String> {
+    extract_json_value_as_string(body, key)?
+        .parse::<u64>()
+        .map_err(|_| format!("{key} must be an integer"))
+}
+
+fn json_value_after_key<'a>(body: &'a str, key: &str) -> Result<&'a str, String> {
+    let needle = format!(r#""{key}""#);
+    let key_start = body.find(&needle).ok_or_else(|| format!("missing {key}"))?;
+    let after_key = &body[key_start + needle.len()..];
+    let colon = after_key
+        .find(':')
+        .ok_or_else(|| format!("missing {key} separator"))?;
+
+    Ok(&after_key[colon + 1..])
+}
+
+fn parse_json_string_at(input: &str, start: usize) -> Result<(String, usize), String> {
+    let bytes = input.as_bytes();
+    if bytes.get(start) != Some(&b'"') {
+        return Err("expected json string".to_string());
+    }
+
+    let mut index = start + 1;
+    let mut value = String::new();
+    while let Some(byte) = bytes.get(index) {
+        match byte {
+            b'"' => return Ok((value, index + 1)),
+            b'\\' => {
+                index += 1;
+                match bytes.get(index) {
+                    Some(b'"') => value.push('"'),
+                    Some(b'\\') => value.push('\\'),
+                    Some(b'/') => value.push('/'),
+                    Some(b'n') => value.push('\n'),
+                    Some(b'r') => value.push('\r'),
+                    Some(b't') => value.push('\t'),
+                    Some(other) => value.push(*other as char),
+                    None => return Err("unterminated json escape".to_string()),
+                }
+            }
+            other => value.push(*other as char),
+        }
+        index += 1;
+    }
+
+    Err("unterminated json string".to_string())
+}
+
+fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
+    while matches!(bytes.get(index), Some(b' ' | b'\n' | b'\r' | b'\t')) {
+        index += 1;
+    }
+    index
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use scada_core::tag::{QualityCode, TagValue, TagValueData};
 
     fn tag_value(sequence: u64) -> TagValue {
         TagValue {
@@ -155,5 +731,69 @@ mod tests {
 
         assert!(policy.validate(&mut command).is_err());
         assert_eq!(ControlCommandStatus::Rejected, command.status);
+    }
+
+    #[test]
+    fn snapshot_endpoint_returns_seeded_tag() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new(
+            "POST",
+            "/api/v1/tags/snapshot",
+            r#"{"project_id":"demo","tag_ids":["mock.temperature.001","missing"]}"#,
+        );
+
+        let response = api.handle(&request);
+
+        assert_eq!(200, response.status_code);
+        assert!(response.body.contains(r#""tag_id":"mock.temperature.001""#));
+        assert!(response.body.contains(r#""missing_tag_ids":["missing"]"#));
+    }
+
+    #[test]
+    fn control_command_endpoint_validates_writable_tag() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"cmd-1","idempotency_key":"idem-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:00Z","timeout_ms":3000}"#,
+        );
+
+        let response = api.handle(&request);
+
+        assert_eq!(202, response.status_code);
+        assert!(response.body.contains(r#""status":"Validated""#));
+        assert!(response.body.contains(r#""driver_request""#));
+    }
+
+    #[test]
+    fn api_requires_token_when_configured() {
+        let mut api = TagServerApi::phase0_mock().with_required_token(Some("secret".to_string()));
+        let unauthenticated = HttpRequest::new(
+            "POST",
+            "/api/v1/tags/snapshot",
+            r#"{"tag_ids":["mock.temperature.001"]}"#,
+        );
+        let authenticated = HttpRequest::new(
+            "POST",
+            "/api/v1/tags/snapshot",
+            r#"{"tag_ids":["mock.temperature.001"]}"#,
+        )
+        .with_header("authorization", "Bearer secret");
+
+        assert_eq!(401, api.handle(&unauthenticated).status_code);
+        assert_eq!(200, api.handle(&authenticated).status_code);
+    }
+
+    #[test]
+    fn parse_http_request_reads_headers_and_body() {
+        let request = parse_http_request(
+            "POST /api/v1/tags/snapshot HTTP/1.1\r\nHost: localhost\r\nContent-Length: 34\r\n\r\n{\"tag_ids\":[\"mock.running.001\"]}",
+        )
+        .expect("parse request");
+
+        assert_eq!("POST", request.method);
+        assert_eq!("/api/v1/tags/snapshot", request.path);
+        assert_eq!(Some("localhost"), request.header("host"));
+        assert!(request.body.contains("mock.running.001"));
     }
 }

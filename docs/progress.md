@@ -40,26 +40,35 @@
   - 子プロセス起動
   - 起動状態の一回観測
   - 停止処理
+- Tag Serverの最小REST API実装
+  - `GET /health`
+  - `POST /api/v1/tags/snapshot`
+  - `POST /api/v1/control-commands`
+  - 起動時トークンによるローカルAPI認証
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
 
-- フェーズ0の次工程準備
+- REST APIを使ったRuntime/Builder境界の準備
 
 ## 次に行うこと
 
-1. `tag-server` の実HTTP/REST最小APIを追加する。
-2. Runtime/Builderから利用するローカルAPI境界を固める。
-3. MQTT over WebSocket導入前に、タグ最新値取得と書き込み要求のREST縦断確認を行う。
+1. `preview-runtime` からTag Server snapshot APIを呼び出す最小Runtime境界を追加する。
+2. 画面ランタイム用の初期タグ値取得フローをRESTで縦断確認する。
+3. その後、MQTT over WebSocketによるdelta購読へ進む。
 
 ## 最新検証
 
 - `cargo fmt`: 成功
-- `cargo test`: 成功
-- `cargo build`: 成功
+- `CARGO_INCREMENTAL=0 cargo test`: 成功
+- `CARGO_INCREMENTAL=0 cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --supervise-once --bin-dir target/debug`: 成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18080`: 起動成功
+- `curl http://127.0.0.1:18080/health`: 成功
+- `curl POST /api/v1/tags/snapshot`: 成功
+- `curl POST /api/v1/control-commands`: 成功
 
 ## セーブポイント
 
@@ -72,4 +81,10 @@
 - `8d0d004 feat: add local service health checks`
 - `0ad4c08 feat: add mock write flow primitives`
 - `81928f5 feat: add local runtime startup plan`
-- 今回の変更: `feat: add local supervisor progress tracking`
+- `2012b5f feat: add local supervisor progress tracking`
+- 今回の変更: `feat: add tag server rest api`
+
+## 注意メモ
+
+- この環境のRust 1.66では増分コンパイルキャッシュでICEが発生したため、今回の検証は `CARGO_INCREMENTAL=0` 付きで実施した。
+- ローカルポートbindとcurl確認はサンドボックス外権限で実施した。

@@ -32,6 +32,11 @@
   - 最新値インメモリキャッシュ
   - 古いsequenceの破棄
   - 書き込み可能タグの最小検証
+  - 最小REST API
+    - `GET /health`
+    - `POST /api/v1/tags/snapshot`
+    - `POST /api/v1/control-commands`
+  - 起動時トークンによるローカルAPI認証
 - `scada-core`
   - Raw Driver Value
   - Driver Write Request/Response
@@ -50,22 +55,27 @@
 ## まだ実装しないもの
 
 - 実gRPCサーバー
-- 実RESTサーバー
+- 本番向けRESTフレームワーク化
 - SurrealDB接続
 - MQTT Broker接続
 - Tauri v2アプリ本体
 
-これらはフェーズ0の次のセーブポイントで、依存関係を追加しながら実装する。
+RESTサーバーは、依存追加前の最小実装として `tag-server --serve` まで追加済み。
+今後はRuntime/Builder境界、SurrealDB接続、MQTT Broker接続、Tauri v2アプリ本体を順に実装する。
 
 ## 検証状況
 
 - `cargo fmt`: 成功
 - `cargo check`: 成功
-- `cargo test`: 成功
-- `cargo build`: 成功
+- `CARGO_INCREMENTAL=0 cargo test`: 成功
+- `CARGO_INCREMENTAL=0 cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --supervise-once --bin-dir target/debug`: 成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18080`: 起動成功
+- `curl http://127.0.0.1:18080/health`: 成功
+- `curl POST /api/v1/tags/snapshot`: 成功
+- `curl POST /api/v1/control-commands`: 成功
 
 ## 縦断テスト
 
@@ -73,3 +83,4 @@
 - `Tag Server WritePolicy -> Mock Driver -> Driver Manager response handling` の書き込み流れ: 成功
 
 Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。
+Rust 1.66の増分コンパイルキャッシュでICEが発生したため、今回の検証では `CARGO_INCREMENTAL=0` を指定した。
