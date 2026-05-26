@@ -24,3 +24,60 @@ impl ServiceRole {
 pub fn print_health(role: ServiceRole) {
     println!("{}: healthy", role.as_str());
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalServiceSpec {
+    pub role: ServiceRole,
+    pub binary: &'static str,
+    pub health_arg: &'static str,
+}
+
+pub fn default_local_services() -> Vec<LocalServiceSpec> {
+    vec![
+        LocalServiceSpec {
+            role: ServiceRole::BuilderApi,
+            binary: "builder-api",
+            health_arg: "--health",
+        },
+        LocalServiceSpec {
+            role: ServiceRole::TagServer,
+            binary: "tag-server",
+            health_arg: "--health",
+        },
+        LocalServiceSpec {
+            role: ServiceRole::DriverManager,
+            binary: "driver-manager",
+            health_arg: "--health",
+        },
+        LocalServiceSpec {
+            role: ServiceRole::PreviewRuntime,
+            binary: "preview-runtime",
+            health_arg: "--health",
+        },
+        LocalServiceSpec {
+            role: ServiceRole::MockDriver,
+            binary: "mock-driver",
+            health_arg: "--health",
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_services_include_tag_server_before_driver_manager() {
+        let services = default_local_services();
+        let tag_server_index = services
+            .iter()
+            .position(|service| service.role == ServiceRole::TagServer)
+            .expect("tag server service");
+        let driver_manager_index = services
+            .iter()
+            .position(|service| service.role == ServiceRole::DriverManager)
+            .expect("driver manager service");
+
+        assert!(tag_server_index < driver_manager_index);
+    }
+}
