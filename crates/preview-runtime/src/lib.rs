@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::time::Duration;
 
@@ -36,6 +36,18 @@ pub struct TagSnapshotRequest {
 pub struct TagSnapshot {
     pub values: Vec<RuntimeTagValue>,
     pub missing_tag_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeControlCommandRequest {
+    pub command_id: String,
+    pub idempotency_key: String,
+    pub user_id: String,
+    pub tag_id: String,
+    pub requested_value: Value,
+    pub status: String,
+    pub requested_at: String,
+    pub timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -128,6 +140,28 @@ pub struct HttpClientResponse {
     pub status_code: u16,
     pub reason: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeHttpRequest {
+    pub method: String,
+    pub path: String,
+    pub headers: Vec<(String, String)>,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeHttpResponse {
+    pub status_code: u16,
+    pub reason: &'static str,
+    pub content_type: &'static str,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeApi {
+    tag_server: TagServerClient,
+    required_token: Option<String>,
 }
 
 #[derive(Debug)]
@@ -239,6 +273,31 @@ impl TagServerClient {
             .map_err(|error| RuntimeClientError::Json(error.to_string()))
     }
 
+    pub fn forward_control_command(
+        &self,
+        command: &RuntimeControlCommandRequest,
+    ) -> Result<HttpClientResponse, RuntimeClientError> {
+        validate_control_command(command).map_err(RuntimeClientError::Runtime)?;
+        let body = serde_json::to_string(command)
+            .map_err(|error| RuntimeClientError::Json(error.to_string()))?;
+        self.forward_control_command_body(&body)
+    }
+
+    pub fn forward_control_command_body(
+        &self,
+        body: &str,
+    ) -> Result<HttpClientResponse, RuntimeClientError> {
+        let raw_request = build_http_request(
+            "POST",
+            "/api/v1/control-commands",
+            &self.endpoint.authority(),
+            self.token.as_deref(),
+            body,
+        );
+        let raw_response = self.send_raw(&raw_request)?;
+        parse_http_response(&raw_response)
+    }
+
     fn send_raw(&self, request: &str) -> Result<String, RuntimeClientError> {
         let mut stream = TcpStream::connect(self.endpoint.authority())
             .map_err(|error| RuntimeClientError::Io(error.to_string()))?;
@@ -257,6 +316,133 @@ impl TagServerClient {
             .read_to_string(&mut response)
             .map_err(|error| RuntimeClientError::Io(error.to_string()))?;
         Ok(response)
+    }
+}
+
+impl RuntimeHttpRequest {
+    pub fn new(method: &str, path: &str, body: &str) -> Self {
+        Self {
+            method: method.to_string(),
+            path: path.to_string(),
+            headers: Vec::new(),
+            body: body.to_string(),
+        }
+    }
+
+    pub fn with_header(mut self, name: &str, value: &str) -> Self {
+        self.headers.push((name.to_string(), value.to_string()));
+        self
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn path_without_query(&self) -> &str {
+        self.path.split('?').next().unwrap_or(&self.path)
+    }
+}
+
+impl RuntimeHttpResponse {
+    pub fn json(status_code: u16, body: String) -> Self {
+        Self {
+            status_code,
+            reason: status_reason(status_code),
+            content_type: "application/json",
+            body,
+        }
+    }
+
+    pub fn text(status_code: u16, body: &str) -> Self {
+        Self {
+            status_code,
+            reason: status_reason(status_code),
+            content_type: "text/plain; charset=utf-8",
+            body: body.to_string(),
+        }
+    }
+
+    pub fn to_http_bytes(&self) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            self.status_code,
+            self.reason,
+            self.content_type,
+            self.body.as_bytes().len(),
+            self.body
+        )
+        .into_bytes()
+    }
+}
+
+impl RuntimeApi {
+    pub fn new(tag_server: TagServerClient) -> Self {
+        Self {
+            tag_server,
+            required_token: None,
+        }
+    }
+
+    pub fn with_required_token(mut self, token: Option<String>) -> Self {
+        self.required_token = token.filter(|value| !value.is_empty());
+        self
+    }
+
+    pub fn handle(&self, request: &RuntimeHttpRequest) -> RuntimeHttpResponse {
+        if request.method == "GET" && request.path_without_query() == "/health" {
+            return RuntimeHttpResponse::json(
+                200,
+                r#"{"service":"preview-runtime","status":"healthy"}"#.to_string(),
+            );
+        }
+
+        if !self.is_authorized(request) {
+            return RuntimeHttpResponse::json(401, error_json("unauthorized"));
+        }
+
+        match (request.method.as_str(), request.path_without_query()) {
+            ("POST", "/api/v1/control-commands") => self.handle_control_command(&request.body),
+            _ => RuntimeHttpResponse::json(404, error_json("not found")),
+        }
+    }
+
+    fn is_authorized(&self, request: &RuntimeHttpRequest) -> bool {
+        let Some(token) = &self.required_token else {
+            return true;
+        };
+
+        request.header("x-scada-token") == Some(token.as_str())
+            || request
+                .header("authorization")
+                .map(|value| value == format!("Bearer {token}"))
+                .unwrap_or(false)
+    }
+
+    fn handle_control_command(&self, body: &str) -> RuntimeHttpResponse {
+        let command: RuntimeControlCommandRequest = match serde_json::from_str(body) {
+            Ok(command) => command,
+            Err(error) => {
+                return RuntimeHttpResponse::json(
+                    400,
+                    error_json(&format!("invalid control command JSON: {error}")),
+                );
+            }
+        };
+
+        if let Err(error) = validate_control_command(&command) {
+            return RuntimeHttpResponse::json(400, error_json(&error.to_string()));
+        }
+
+        match self.tag_server.forward_control_command(&command) {
+            Ok(response) => RuntimeHttpResponse::json(response.status_code, response.body),
+            Err(error) => RuntimeHttpResponse::json(
+                502,
+                error_json(&format!("tag server forwarding failed: {error}")),
+            ),
+        }
     }
 }
 
@@ -546,6 +732,24 @@ pub fn publish_delta_via_mqtt(
     runtime.block_on(publish_delta_via_mqtt_async(config, delta, project_id))
 }
 
+pub fn run_runtime_server(addr: &str, api: &RuntimeApi) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => handle_runtime_stream(&mut stream, api)?,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(())
+}
+
+pub fn serve_runtime_once(listener: TcpListener, api: &RuntimeApi) -> std::io::Result<()> {
+    let (mut stream, _) = listener.accept()?;
+    handle_runtime_stream(&mut stream, api)
+}
+
 async fn receive_delta_once_via_mqtt_async(
     config: &MqttConnectionConfig,
     project_id: &str,
@@ -675,6 +879,155 @@ fn build_http_request(
     request
 }
 
+pub fn parse_runtime_http_request(raw: &str) -> Result<RuntimeHttpRequest, String> {
+    let Some((head, body)) = raw.split_once("\r\n\r\n") else {
+        return Err("missing http header terminator".to_string());
+    };
+    let mut lines = head.lines();
+    let request_line = lines
+        .next()
+        .ok_or_else(|| "missing http request line".to_string())?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| "missing http method".to_string())?;
+    let path = parts
+        .next()
+        .ok_or_else(|| "missing http path".to_string())?;
+
+    let mut request = RuntimeHttpRequest::new(method, path, body);
+    for line in lines {
+        if let Some((name, value)) = line.split_once(':') {
+            request = request.with_header(name.trim(), value.trim());
+        }
+    }
+
+    Ok(request)
+}
+
+fn handle_runtime_stream(stream: &mut TcpStream, api: &RuntimeApi) -> std::io::Result<()> {
+    let request = match read_runtime_http_request(stream) {
+        Ok(request) => request,
+        Err(error) => {
+            let response = RuntimeHttpResponse::text(400, &error.to_string());
+            stream.write_all(&response.to_http_bytes())?;
+            return Ok(());
+        }
+    };
+    let response = api.handle(&request);
+    stream.write_all(&response.to_http_bytes())
+}
+
+fn read_runtime_http_request(stream: &mut TcpStream) -> std::io::Result<RuntimeHttpRequest> {
+    let mut buffer = Vec::new();
+    let mut chunk = [0; 1024];
+    let mut header_end = None;
+
+    while header_end.is_none() {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        header_end = find_header_end(&buffer);
+
+        if buffer.len() > 64 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "http header too large",
+            ));
+        }
+    }
+
+    let Some(header_end) = header_end else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "incomplete http request",
+        ));
+    };
+
+    let header = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    let content_length = content_length(&header);
+    let expected_len = header_end + 4 + content_length;
+
+    while buffer.len() < expected_len {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+
+    let raw = String::from_utf8_lossy(&buffer[..buffer.len().min(expected_len)]).to_string();
+    parse_runtime_http_request(&raw).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("bad request: {error}"),
+        )
+    })
+}
+
+fn validate_control_command(command: &RuntimeControlCommandRequest) -> Result<(), String> {
+    if command.command_id.is_empty() {
+        return Err("command_id must not be empty".to_string());
+    }
+    if command.idempotency_key.is_empty() {
+        return Err("idempotency_key must not be empty".to_string());
+    }
+    if command.user_id.is_empty() {
+        return Err("user_id must not be empty".to_string());
+    }
+    if command.tag_id.is_empty() {
+        return Err("tag_id must not be empty".to_string());
+    }
+    if command.status != "Requested" {
+        return Err("status must be Requested for a new runtime command".to_string());
+    }
+    if command.requested_at.is_empty() {
+        return Err("requested_at must not be empty".to_string());
+    }
+    if command.timeout_ms == 0 {
+        return Err("timeout_ms must be greater than zero".to_string());
+    }
+
+    Ok(())
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn content_length(header: &str) -> usize {
+    header
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0)
+}
+
+fn status_reason(status_code: u16) -> &'static str {
+    match status_code {
+        200 => "OK",
+        202 => "Accepted",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        409 => "Conflict",
+        502 => "Bad Gateway",
+        _ => "OK",
+    }
+}
+
+fn error_json(message: &str) -> String {
+    serde_json::json!({ "error": message }).to_string()
+}
+
 fn parse_http_response(raw: &str) -> Result<HttpClientResponse, RuntimeClientError> {
     let (head, body) = raw.split_once("\r\n\r\n").ok_or_else(|| {
         RuntimeClientError::Http("missing response header terminator".to_string())
@@ -744,6 +1097,75 @@ mod tests {
         assert_eq!(200, response.status_code);
         assert_eq!("OK", response.reason);
         assert_eq!(r#"{"values":[],"missing_tag_ids":[]}"#, response.body);
+    }
+
+    #[test]
+    fn runtime_api_requires_token_for_control_commands() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        )
+        .with_required_token(Some("secret".to_string()));
+        let request = RuntimeHttpRequest::new("POST", "/api/v1/control-commands", "{}");
+
+        let response = api.handle(&request);
+
+        assert_eq!(401, response.status_code);
+        assert_eq!(r#"{"error":"unauthorized"}"#, response.body);
+    }
+
+    #[test]
+    fn runtime_api_rejects_invalid_control_command_before_forwarding() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        );
+        let request = RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"","idempotency_key":"key","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#,
+        );
+
+        let response = api.handle(&request);
+
+        assert_eq!(400, response.status_code);
+        assert!(response.body.contains("command_id must not be empty"));
+    }
+
+    #[test]
+    fn tag_server_client_forwards_control_command_with_auth() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/control-commands", request.path);
+            assert_eq!(Some("Bearer secret"), request.header("authorization"));
+            assert!(request.body.contains(r#""tag_id":"mock.running.001""#));
+
+            let body = r#"{"command":{"status":"DriverAck"},"driver_request":{"command_id":"cmd-1","tag_id":"mock.running.001","value":"true"}}"#;
+            let response = RuntimeHttpResponse::json(202, body.to_string());
+            stream.write_all(&response.to_http_bytes()).expect("write");
+        });
+        let client = TagServerClient::from_base_url(&format!("http://{addr}"))
+            .expect("client")
+            .with_token(Some("secret".to_string()));
+
+        let response = client
+            .forward_control_command(&RuntimeControlCommandRequest {
+                command_id: "cmd-1".to_string(),
+                idempotency_key: "key-1".to_string(),
+                user_id: "operator".to_string(),
+                tag_id: "mock.running.001".to_string(),
+                requested_value: Value::Bool(true),
+                status: "Requested".to_string(),
+                requested_at: "1970-01-01T00:00:05Z".to_string(),
+                timeout_ms: 1000,
+            })
+            .expect("response");
+        server.join().expect("server");
+
+        assert_eq!(202, response.status_code);
+        assert!(response.body.contains("DriverAck"));
     }
 
     #[test]

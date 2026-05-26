@@ -106,6 +106,13 @@
   - 受信エラー/切断時はREST snapshotを再取得して再同期し、その後購読へ復帰
   - `subscribe_deltas_via_mqtt` により単一接続での連続受信に対応
   - 受信エラー後の再接続試行に固定バックオフ（1秒）を追加
+- Preview RuntimeのControlCommand受付REST境界実装（最小版）
+  - `preview-runtime --serve` を追加
+  - `GET /health` と `POST /api/v1/control-commands` を受付
+  - Runtime側でControlCommand JSONを検証し、Tag ServerへREST転送
+  - `SCADA_LOCAL_TOKEN` がある場合はPreview Runtime自身のAPI認証とTag Server転送認証に使用
+  - 実プロセスで `Runtime REST API -> Tag Server -> Driver Manager -> Mock Driver` が `DriverAck` まで到達することを確認
+  - `config/tauri-shell.services*.json` の `preview-runtime` を常駐REST APIとして起動する設定へ更新
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -182,12 +189,12 @@
 
 ## 現在作業中
 
-- フェーズ1 Runtime最小縦断の着手準備
+- フェーズ1 Runtime最小縦断
 
 ## 次に行うこと
 
-1. Preview RuntimeにControlCommand受付REST境界を追加し、`Runtime REST API -> Tag Server -> Driver Manager -> Mock Driver` の書き込み経路をRuntime起点にする。
-2. Svelte監視画面の最小表示へ向けて、`ScreenProjection` をUI向けJSONとして返すRuntime APIを追加する。
+1. Svelte監視画面の最小表示へ向けて、`ScreenProjection` をUI向けJSONとして返すRuntime APIを追加する。
+2. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
 ## フェーズ0完了条件棚卸し
@@ -200,15 +207,16 @@
 | Tag ServerがMock値を受け取り、最新値と品質を保持できる | 完了 | `POST /api/v1/driver-values` でDriver Managerからの値投入、snapshot反映、MQTT publishを確認済み。 |
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
 | REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
+| Runtime REST APIからMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Preview Runtime -> Tag Server -> Driver Manager -> Mock Driver` で `DriverAck` まで確認済み。 |
 | サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログは実装済み。サービス別ログ永続化やUI表示は後続。 |
 
 ## フェーズ1着手条件
 
 - Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
 - Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
-- Runtime起点の書き込みREST APIは未実装のため、フェーズ1の最初の実装対象にする。
+- Runtime起点の書き込みREST APIは `Preview Runtime REST -> Tag Server -> Driver Manager -> Mock Driver` まで確認済み。
 - 画面表示はCLI上の `ScreenProjection` まで実装済み。Svelte監視画面向けにはRuntime APIとしてprojection JSONを返す境界が必要。
-- Local Previewのservice-configはBroker、Tag Server、Driver Managerの常駐確認済み。Builder API、Preview Runtime、Mock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
+- Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
 
@@ -258,6 +266,19 @@
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config /private/tmp/tauri-shell.services.bad.json`: 失敗（想定どおり）
   - `unsupported schema_version 2.0.0 ... (expected 1.0.0)` を確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 2`: 成功
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`: 成功
+- `cargo build`: 成功
+- `target/debug/preview-runtime --serve --addr 127.0.0.1:18190 --tag-server http://127.0.0.1:18180`: 起動成功（ローカルbind権限つき）
+- `curl POST http://127.0.0.1:18190/api/v1/control-commands`: 成功
+  - `Runtime REST API -> Tag Server -> Driver Manager -> Mock Driver`
+  - 応答 `202 Accepted`
+  - `command.status=DriverAck`
+  - `driver_response.accepted=true`
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
+  - `preview-runtime --serve --addr 127.0.0.1:18090 --tag-server http://127.0.0.1:18080` を確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 2 --supervise-summary-json`: 成功
+  - `running=6`
+  - `events=NONE`
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功

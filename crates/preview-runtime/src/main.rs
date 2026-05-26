@@ -5,8 +5,8 @@ use preview_runtime::{
     apply_delta_to_projection, default_snapshot_tags, format_delta_apply_result,
     format_screen_projection_summary, format_snapshot_summary, load_screen_definition,
     parse_tag_value_delta, project_snapshot_to_screen, publish_delta_via_mqtt,
-    receive_delta_once_via_mqtt, resolve_tag_ids_from_screen, subscribe_deltas_via_mqtt,
-    MqttConnectionConfig, RuntimeTagValue, TagServerClient,
+    receive_delta_once_via_mqtt, resolve_tag_ids_from_screen, run_runtime_server,
+    subscribe_deltas_via_mqtt, MqttConnectionConfig, RuntimeApi, RuntimeTagValue, TagServerClient,
 };
 use scada_core::mqtt::{MqttBrokerEndpoint, MqttBrokerTransport, DEFAULT_MQTT_TCP_PORT};
 use scada_core::service::{print_health, ServiceRole, LOCAL_TOKEN_ENV};
@@ -18,6 +18,28 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--health") {
         print_health(ServiceRole::PreviewRuntime);
+        return;
+    }
+    if args.iter().any(|arg| arg == "--serve") {
+        let addr = serve_addr(&args);
+        let tag_server_url = arg_value(&args, "--tag-server")
+            .or_else(|| std::env::var(TAG_SERVER_URL_ENV).ok())
+            .unwrap_or_else(|| "http://127.0.0.1:18080".to_string());
+        let token = arg_value(&args, "--token").or_else(|| std::env::var(LOCAL_TOKEN_ENV).ok());
+        let client = match TagServerClient::from_base_url(&tag_server_url) {
+            Ok(client) => client.with_token(token.clone()),
+            Err(error) => {
+                eprintln!("preview-runtime serve failed: {error}");
+                std::process::exit(1);
+            }
+        };
+        let api = RuntimeApi::new(client).with_required_token(token);
+
+        eprintln!("preview-runtime listening on {addr}");
+        if let Err(error) = run_runtime_server(&addr, &api) {
+            eprintln!("preview-runtime failed: {error}");
+            std::process::exit(1);
+        }
         return;
     }
     if args.iter().any(|arg| arg == "--snapshot") {
@@ -254,6 +276,17 @@ fn arg_values(args: &[String], name: &str) -> Vec<String> {
         .filter(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
         .collect()
+}
+
+fn serve_addr(args: &[String]) -> String {
+    arg_value(args, "--addr").unwrap_or_else(|| {
+        let host = std::env::var("SCADA_BIND_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let port = std::env::var("SCADA_PREVIEW_RUNTIME_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(18090);
+        format!("{host}:{port}")
+    })
 }
 
 fn mqtt_config_from_args(args: &[String], client_prefix: &str) -> MqttConnectionConfig {
