@@ -4,7 +4,7 @@
 
 ## 現在のフェーズ
 
-フェーズ0: Mock通信基盤
+フェーズ1準備: Runtime最小縦断への移行
 
 ## 完了済み
 
@@ -182,25 +182,33 @@
 
 ## 現在作業中
 
-- フェーズ0完了条件の再棚卸しとフェーズ1着手条件整理
+- フェーズ1 Runtime最小縦断の着手準備
 
 ## 次に行うこと
 
-1. フェーズ0完了条件を再棚卸しし、フェーズ1着手条件を更新する。
-2. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
-3. フェーズ1のRuntime最小縦断に入る前に、必要なフェーズ0セーブポイントを作成する。
+1. Preview RuntimeにControlCommand受付REST境界を追加し、`Runtime REST API -> Tag Server -> Driver Manager -> Mock Driver` の書き込み経路をRuntime起点にする。
+2. Svelte監視画面の最小表示へ向けて、`ScreenProjection` をUI向けJSONとして返すRuntime APIを追加する。
+3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
 ## フェーズ0完了条件棚卸し
 
 | 完了条件 | 状態 | メモ |
 | --- | --- | --- |
-| Tauri Shellから全ローカルサービスを起動、停止できる | 一部完了 | `--supervise-once` / `--supervise-loop` で子プロセス起動・停止は実装済み。実サービスの長時間常駐前提の確認は継続。 |
+| Tauri Shellから全ローカルサービスを起動、停止できる | 完了 | `--supervise-loop --service-config` でBroker、Tag Server、Driver Managerを同時起動し、終了時に停止できることを確認済み。スケルトン終了サービスは再起動対象外に設定。 |
 | Mock Driverが周期的にタグ値を生成できる | 完了 | `driver-manager --run-mock-loop` でMock Driverを周期起動し、Tag Serverへ継続投入できる。 |
 | Driver ManagerがMock Driverを起動、監視できる | 一部完了 | `--run-mock-loop` でMock Driver子プロセスを周期起動できる。常駐監視、再起動、ログ収集は未完。 |
 | Tag ServerがMock値を受け取り、最新値と品質を保持できる | 完了 | `POST /api/v1/driver-values` でDriver Managerからの値投入、snapshot反映、MQTT publishを確認済み。 |
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
 | REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
 | サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログは実装済み。サービス別ログ永続化やUI表示は後続。 |
+
+## フェーズ1着手条件
+
+- Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
+- Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
+- Runtime起点の書き込みREST APIは未実装のため、フェーズ1の最初の実装対象にする。
+- 画面表示はCLI上の `ScreenProjection` まで実装済み。Svelte監視画面向けにはRuntime APIとしてprojection JSONを返す境界が必要。
+- Local Previewのservice-configはBroker、Tag Server、Driver Managerの常駐確認済み。Builder API、Preview Runtime、Mock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
 
@@ -341,6 +349,11 @@
   - `events="NONE"` を確認
   - `builder-api` / `preview-runtime` / `mock-driver` はスケルトン終了するが、configで再起動対象外のためrestartは発生しない
   - Tag Server / Driver Manager / Brokerがrunning側に残ることを確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.mosquitto.json --supervise-cycles 6 --supervise-interval-ms 500 --supervise-summary-json --restart-exited`: 成功
+  - Driver Manager write server追加後も `events="NONE"` を確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.mosquitto.json --supervise-cycles 20 --supervise-interval-ms 500 --supervise-summary-json --restart-exited`: 成功
+  - 20 cyclesで `events="NONE"` を確認
+  - 起動時トークンなしの `curl POST /api/v1/control-commands` は `{"error":"unauthorized"}` となり、ローカルAPI認証境界が効いていることを確認
 - `cargo test -p scada-core -p tag-server -p driver-manager -p mock-driver`（Mock書き込み縦断追加後）: 成功
   - DriverWriteRequest / DriverWriteResponse JSON round-tripテストを含めて成功
   - Driver Manager `/api/v1/driver-writes` リクエストパーステストを含めて成功
