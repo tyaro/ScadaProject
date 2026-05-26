@@ -33,6 +33,6 @@
 
 - `cargo fmt`: 成功
 - `cargo check`: 成功
-- `cargo test`: macOSのXcodeライセンス未承諾によりリンク段階で失敗
+- `cargo test`: 成功
 
-`cargo test` の失敗はコード起因ではなく、ローカル環境で `sudo xcodebuild -license` の承諾が必要な状態のため発生している。Xcodeライセンス承諾後に再実行する。
+Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。
