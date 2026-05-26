@@ -19,6 +19,25 @@
 - JSON Schema雛形
 - Mock Driver Manifest
 
+## 追加済みのコアロジック
+
+- `mock-driver`
+  - 周期値生成の土台
+  - Mockタグ書き込み応答
+- `driver-manager`
+  - Raw Driver ValueからTag Valueへの正規化
+  - sequence採番
+- `tag-server`
+  - 最新値インメモリキャッシュ
+  - 古いsequenceの破棄
+- `scada-core`
+  - Raw Driver Value
+  - Driver Write Request/Response
+  - Tag Value
+  - Quality Code
+  - ControlCommand状態
+  - MQTT topic生成
+
 ## まだ実装しないもの
 
 - 実gRPCサーバー
