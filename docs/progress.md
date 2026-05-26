@@ -119,6 +119,12 @@
   - `ScreenProjection` / `ScreenObjectState` / `ObjectBindingState` をSerialize対応
   - `contracts/openapi/runtime.yaml` にprojection APIを追加
   - 実プロセスで `Preview Runtime -> Tag Server snapshot -> ScreenProjection JSON` を確認
+- Svelte監視画面の最小表示を追加
+  - `apps/runtime-ui` にSvelte + TypeScript + Viteアプリを追加
+  - `POST /api/v1/screens/projection` を読み、screen/object/binding/value/quality/sequenceを表示
+  - `POST /api/v1/control-commands` で `mock.running.001` のStart/Stopを書き込み
+  - Vite dev serverの `/api/*` proxyでPreview Runtime `127.0.0.1:18090` へ接続
+  - `npm run check` / `npm run build` とVite proxy越しprojection取得を確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -199,7 +205,7 @@
 
 ## 次に行うこと
 
-1. Svelte監視画面の最小表示へ向けて、Runtime projection APIを読むフロントエンド最小画面を追加する。
+1. Svelte監視画面でMQTT deltaを受けて表示を更新する経路を追加する。
 2. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
@@ -221,7 +227,7 @@
 - Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
 - Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
 - Runtime起点の書き込みREST APIは `Preview Runtime REST -> Tag Server -> Driver Manager -> Mock Driver` まで確認済み。
-- 画面表示はRuntime APIの `ScreenProjection` JSONまで実装済み。Svelte監視画面向けにはこのAPIを読む最小画面が必要。
+- 画面表示はSvelte監視画面がRuntime APIの `ScreenProjection` JSONを読むところまで実装済み。MQTT deltaのブラウザ反映は次の実装対象。
 - Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
@@ -293,6 +299,16 @@
   - `object_states` に `pump-001` / `label-001`
   - `mock.temperature.001` / `mock.running.001` の値とquality/sequenceを確認
 - `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`（projection API追加後）: 成功
+- `npm create vite@latest apps/runtime-ui -- --template svelte-ts`: 成功
+- `cd apps/runtime-ui && npm install`: 成功
+- `cd apps/runtime-ui && npm run check`: 成功
+- `cd apps/runtime-ui && npm run build`: 成功
+- `cd apps/runtime-ui && npm run dev -- --host 127.0.0.1 --port 5173`: 起動成功（ローカルbind権限つき）
+- `curl http://127.0.0.1:5173/`: 成功
+- `curl POST http://127.0.0.1:5173/api/v1/screens/projection -d '{}'`: 成功
+  - Vite proxy経由でPreview Runtimeへ到達
+  - 応答 `200 OK`
+  - `screen_id=mock-main`
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
