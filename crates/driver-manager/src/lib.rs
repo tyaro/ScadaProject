@@ -1,9 +1,13 @@
 use scada_core::command::{ControlCommand, ControlCommandStatus};
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::process::Command;
 
-use scada_core::driver::{raw_driver_value_from_json_str, DriverWriteResponse, RawDriverValue};
+use mock_driver::MockDriver;
+use scada_core::driver::{
+    driver_write_request_from_json_str, driver_write_response_to_json,
+    raw_driver_value_from_json_str, DriverWriteResponse, RawDriverValue,
+};
 use scada_core::tag::{tag_value_to_json, TagValue};
 
 #[derive(Debug, Clone)]
@@ -164,6 +168,143 @@ pub fn post_tag_values(
     parse_http_response(&response)
 }
 
+pub fn run_mock_write_server(addr: &str) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+
+    for stream in listener.incoming() {
+        match stream {
+            Ok(mut stream) => handle_write_stream(&mut stream)?,
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_write_stream(stream: &mut TcpStream) -> std::io::Result<()> {
+    let request = match read_http_request(stream) {
+        Ok(request) => request,
+        Err(error) => {
+            let response = http_response(400, "Bad Request", &json_error(&error.to_string()));
+            stream.write_all(response.as_bytes())?;
+            return Ok(());
+        }
+    };
+
+    let response = if request.method == "POST" && request.path == "/api/v1/driver-writes" {
+        match driver_write_request_from_json_str(&request.body) {
+            Ok(driver_request) => {
+                let driver = MockDriver::new("mock-driver", "mock-endpoint");
+                let driver_response = driver.write(&driver_request);
+                http_response(
+                    202,
+                    "Accepted",
+                    &driver_write_response_to_json(&driver_response),
+                )
+            }
+            Err(error) => http_response(400, "Bad Request", &json_error(&error)),
+        }
+    } else if request.method == "GET" && request.path == "/health" {
+        http_response(
+            200,
+            "OK",
+            r#"{"service":"driver-manager","status":"healthy"}"#,
+        )
+    } else {
+        http_response(404, "Not Found", &json_error("not found"))
+    };
+
+    stream.write_all(response.as_bytes())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SimpleHttpRequest {
+    method: String,
+    path: String,
+    body: String,
+}
+
+fn read_http_request(stream: &mut TcpStream) -> std::io::Result<SimpleHttpRequest> {
+    let mut buffer = Vec::new();
+    let mut chunk = [0; 1024];
+    let mut header_end = None;
+
+    while header_end.is_none() {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+        header_end = buffer.windows(4).position(|window| window == b"\r\n\r\n");
+    }
+
+    let Some(header_end) = header_end else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "incomplete http request",
+        ));
+    };
+    let header = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+    let content_length = header
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0);
+    let expected_len = header_end + 4 + content_length;
+
+    while buffer.len() < expected_len {
+        let read = stream.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&chunk[..read]);
+    }
+
+    let raw = String::from_utf8_lossy(&buffer[..buffer.len().min(expected_len)]).to_string();
+    parse_http_request(&raw)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+fn parse_http_request(raw: &str) -> Result<SimpleHttpRequest, String> {
+    let (head, body) = raw
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "missing http header terminator".to_string())?;
+    let request_line = head
+        .lines()
+        .next()
+        .ok_or_else(|| "missing http request line".to_string())?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| "missing http method".to_string())?;
+    let path = parts
+        .next()
+        .ok_or_else(|| "missing http path".to_string())?;
+
+    Ok(SimpleHttpRequest {
+        method: method.to_string(),
+        path: path.to_string(),
+        body: body.to_string(),
+    })
+}
+
+fn http_response(status: u16, reason: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.as_bytes().len()
+    )
+}
+
+fn json_error(message: &str) -> String {
+    format!(r#"{{"error":{}}}"#, json_string(message))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HttpEndpoint {
     host: String,
@@ -296,5 +437,16 @@ mod tests {
 
         assert_eq!(202, status);
         assert_eq!(r#"{"ok":true}"#, body);
+    }
+
+    #[test]
+    fn write_request_endpoint_accepts_mock_tag() {
+        let request = parse_http_request(
+            "POST /api/v1/driver-writes HTTP/1.1\r\nContent-Length: 72\r\n\r\n{\"command_id\":\"cmd-1\",\"tag_id\":\"mock.running.001\",\"value\":\"true\"}",
+        )
+        .expect("parse request");
+
+        assert_eq!("POST", request.method);
+        assert_eq!("/api/v1/driver-writes", request.path);
     }
 }

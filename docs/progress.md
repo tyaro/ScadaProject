@@ -71,6 +71,13 @@
   - 両configの `driver-manager` に `--run-mock-loop` とMock Driver/Tag Server接続引数を設定
   - Driver Managerに `--startup-delay-ms` を追加し、Broker起動前publishのレースを回避
   - 現時点でスケルトン終了する `builder-api` / `preview-runtime` / `mock-driver` はconfig上で再起動対象外に設定
+- REST API経由のMock書き込み縦断（最小版）
+  - Driver Managerに `--write-addr <addr>` を追加し、`/api/v1/driver-writes` でMock書き込みを受付
+  - Tag Serverに `--driver-manager <url>` を追加し、ControlCommand検証後にDriver Managerへ書き込み中継
+  - Driver ManagerがMock Driverの `write` を呼び、DriverWriteResponseを返す
+  - Tag ServerがDriverWriteResponseをControlCommand状態へ反映し、成功時は `DriverAck` を返す
+  - `contracts/openapi/runtime.yaml` のControlCommand応答に `driver_response` と `502` を追加
+  - `config/tauri-shell.services*.json` に Driver Manager write server と Tag Server接続先を追加
 - Preview Runtimeのsnapshot取得境界実装
   - `serde` / `serde_json` による型付きsnapshot DTO
   - Tag Server REST API向け最小HTTPクライアント
@@ -175,13 +182,13 @@
 
 ## 現在作業中
 
-- Driver ManagerのMock周期投入とTag Server MQTT publish統合
+- フェーズ0完了条件の再棚卸しとフェーズ1着手条件整理
 
 ## 次に行うこと
 
-1. REST API経由のMock書き込み要求を `Runtime -> Tag Server -> Driver Manager -> Mock Driver` の境界で追跡できるようにする。
+1. フェーズ0完了条件を再棚卸しし、フェーズ1着手条件を更新する。
 2. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
-3. フェーズ0完了条件を再棚卸しし、フェーズ1着手条件を更新する。
+3. フェーズ1のRuntime最小縦断に入る前に、必要なフェーズ0セーブポイントを作成する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -192,7 +199,7 @@
 | Driver ManagerがMock Driverを起動、監視できる | 一部完了 | `--run-mock-loop` でMock Driver子プロセスを周期起動できる。常駐監視、再起動、ログ収集は未完。 |
 | Tag ServerがMock値を受け取り、最新値と品質を保持できる | 完了 | `POST /api/v1/driver-values` でDriver Managerからの値投入、snapshot反映、MQTT publishを確認済み。 |
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
-| REST APIでMock Driverへの書き込み要求を送れる | 一部完了 | Tag Server RESTとMock書き込み純粋ロジックは実装済み。Runtime/Driver Manager境界を通す縦断は未完。 |
+| REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
 | サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログは実装済み。サービス別ログ永続化やUI表示は後続。 |
 
 ## 最新検証
@@ -334,6 +341,22 @@
   - `events="NONE"` を確認
   - `builder-api` / `preview-runtime` / `mock-driver` はスケルトン終了するが、configで再起動対象外のためrestartは発生しない
   - Tag Server / Driver Manager / Brokerがrunning側に残ることを確認
+- `cargo test -p scada-core -p tag-server -p driver-manager -p mock-driver`（Mock書き込み縦断追加後）: 成功
+  - DriverWriteRequest / DriverWriteResponse JSON round-tripテストを含めて成功
+  - Driver Manager `/api/v1/driver-writes` リクエストパーステストを含めて成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18085 --driver-manager http://127.0.0.1:18086`: 起動成功
+- `target/debug/driver-manager --run-mock-loop --mock-driver-bin target/debug/mock-driver --tag-server http://127.0.0.1:18085 --write-addr 127.0.0.1:18086 --project-id demo --interval-ms 1000`: 起動成功
+  - Driver Manager write serverが `127.0.0.1:18086` でlistenすることを確認
+- `curl POST http://127.0.0.1:18085/api/v1/control-commands`: 成功
+  - `mock.running.001` への書き込み要求が `DriverAck` になることを確認
+  - `driver_response={"accepted":true,"command_id":"cmd-write-1","message":"accepted"}` を確認
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`（Mock書き込み縦断追加後）: 成功
+  - 影響範囲の全テスト成功
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.mosquitto.json`: 成功
+  - `tag-server args="--serve --mqtt-url mqtt://127.0.0.1:1883 --driver-manager http://127.0.0.1:18081"` を確認
+  - `driver-manager args="--run-mock-loop ... --write-addr 127.0.0.1:18081 ..."` を確認
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
+  - WebSocket Broker向けにも同じDriver Manager write server設定が入ることを確認
 
 ## セーブポイント
 

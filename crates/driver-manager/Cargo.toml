@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 scada-core = { path = "../scada-core" }
 serde_json = "1.0.150"
+mock-driver = { path = "../mock-driver" }
 
 [lib]
 path = "src/lib.rs"

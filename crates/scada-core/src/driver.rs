@@ -42,6 +42,71 @@ impl DriverWriteResponse {
     }
 }
 
+pub fn driver_write_request_to_json_value(request: &DriverWriteRequest) -> serde_json::Value {
+    serde_json::json!({
+        "command_id": request.command_id,
+        "tag_id": request.tag_id,
+        "value": request.value,
+    })
+}
+
+pub fn driver_write_request_to_json(request: &DriverWriteRequest) -> String {
+    driver_write_request_to_json_value(request).to_string()
+}
+
+pub fn driver_write_request_from_json_value(
+    value: &serde_json::Value,
+) -> Result<DriverWriteRequest, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "driver write request must be a JSON object".to_string())?;
+    Ok(DriverWriteRequest {
+        command_id: required_string(object, "command_id")?.to_string(),
+        tag_id: required_string(object, "tag_id")?.to_string(),
+        value: required_string(object, "value")?.to_string(),
+    })
+}
+
+pub fn driver_write_request_from_json_str(input: &str) -> Result<DriverWriteRequest, String> {
+    let value: serde_json::Value = serde_json::from_str(input)
+        .map_err(|error| format!("invalid driver write request JSON: {error}"))?;
+    driver_write_request_from_json_value(&value)
+}
+
+pub fn driver_write_response_to_json_value(response: &DriverWriteResponse) -> serde_json::Value {
+    serde_json::json!({
+        "command_id": response.command_id,
+        "accepted": response.accepted,
+        "message": response.message,
+    })
+}
+
+pub fn driver_write_response_to_json(response: &DriverWriteResponse) -> String {
+    driver_write_response_to_json_value(response).to_string()
+}
+
+pub fn driver_write_response_from_json_value(
+    value: &serde_json::Value,
+) -> Result<DriverWriteResponse, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "driver write response must be a JSON object".to_string())?;
+    Ok(DriverWriteResponse {
+        command_id: required_string(object, "command_id")?.to_string(),
+        accepted: object
+            .get("accepted")
+            .and_then(|value| value.as_bool())
+            .ok_or_else(|| "missing or invalid accepted".to_string())?,
+        message: required_string(object, "message")?.to_string(),
+    })
+}
+
+pub fn driver_write_response_from_json_str(input: &str) -> Result<DriverWriteResponse, String> {
+    let value: serde_json::Value = serde_json::from_str(input)
+        .map_err(|error| format!("invalid driver write response JSON: {error}"))?;
+    driver_write_response_from_json_value(&value)
+}
+
 pub fn raw_driver_value_to_json_value(value: &RawDriverValue) -> serde_json::Value {
     serde_json::json!({
         "tag_id": value.tag_id,
@@ -116,5 +181,31 @@ mod tests {
         assert_eq!(value, decoded);
         assert!(encoded.contains(r#""data_type":"boolean""#));
         assert!(encoded.contains(r#""value":true"#));
+    }
+
+    #[test]
+    fn driver_write_request_json_round_trips() {
+        let request = DriverWriteRequest {
+            command_id: "cmd-1".to_string(),
+            tag_id: "mock.running.001".to_string(),
+            value: "true".to_string(),
+        };
+
+        let encoded = driver_write_request_to_json(&request);
+        let decoded =
+            driver_write_request_from_json_str(&encoded).expect("decode driver write request");
+
+        assert_eq!(request, decoded);
+    }
+
+    #[test]
+    fn driver_write_response_json_round_trips() {
+        let response = DriverWriteResponse::accepted("cmd-1");
+
+        let encoded = driver_write_response_to_json(&response);
+        let decoded =
+            driver_write_response_from_json_str(&encoded).expect("decode driver write response");
+
+        assert_eq!(response, decoded);
     }
 }

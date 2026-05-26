@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use scada_core::mqtt::MqttBrokerEndpoint;
 use scada_core::service::{print_health, ServiceRole, LOCAL_BIND_HOST_ENV, LOCAL_TOKEN_ENV};
-use tag_server::{run_server, MqttPublishConfig, TagServerApi};
+use tag_server::{run_server, DriverManagerClientConfig, MqttPublishConfig, TagServerApi};
 
 const TAG_SERVER_PORT_ENV: &str = "SCADA_TAG_SERVER_PORT";
 
@@ -16,9 +16,11 @@ fn main() {
         let addr = serve_addr(&args);
         let required_token = std::env::var(LOCAL_TOKEN_ENV).ok();
         let mqtt = mqtt_config_from_args(&args);
+        let driver_manager = driver_manager_config_from_args(&args);
         let mut api = TagServerApi::phase0_mock()
             .with_required_token(required_token)
-            .with_mqtt_publish(mqtt);
+            .with_mqtt_publish(mqtt)
+            .with_driver_manager(driver_manager);
 
         eprintln!("tag-server listening on {addr}");
         if let Err(error) = run_server(&addr, &mut api) {
@@ -29,6 +31,12 @@ fn main() {
     }
 
     println!("tag-server skeleton");
+}
+
+fn driver_manager_config_from_args(args: &[String]) -> Option<DriverManagerClientConfig> {
+    Some(DriverManagerClientConfig {
+        base_url: arg_value(args, "--driver-manager")?,
+    })
 }
 
 fn mqtt_config_from_args(args: &[String]) -> Option<MqttPublishConfig> {

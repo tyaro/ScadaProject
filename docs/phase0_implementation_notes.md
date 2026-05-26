@@ -31,6 +31,8 @@
   - `--run-mock-cycle` によるMock Driver子プロセス起動
   - `--run-mock-loop` による周期Mock投入
   - `--startup-delay-ms` によるBroker/Tag Server起動待ち
+  - `--write-addr` によるMock書き込み受付HTTP
+  - `/api/v1/driver-writes` でMock Driver `write` を呼び出す最小境界
   - Mock Driver JSON Lines出力の読込
   - `POST /api/v1/driver-values` によるTag Serverへの正規化値投入
 - `tag-server`
@@ -43,6 +45,7 @@
     - `POST /api/v1/driver-values`
     - `POST /api/v1/control-commands`
   - `--mqtt-url` 指定時のタグ値MQTT publish
+  - `--driver-manager` 指定時のControlCommand書き込み中継
   - `POST /api/v1/driver-values` でcache更新されたTagValueのみpublish
   - 起動時トークンによるローカルAPI認証
 - `scada-core`
@@ -367,6 +370,8 @@ target/debug/tauri-shell ... --supervise-summary-json \
 - `Driver Manager -> POST /api/v1/driver-values -> Tag Server MQTT publish -> Preview Runtime receive-once`: 成功
 - `tauri-shell --supervise-loop --service-config config/tauri-shell.services.mosquitto.json` によるBroker/Tag Server/Driver Manager同時起動: 成功
 - `Tag Server WritePolicy -> Mock Driver -> Driver Manager response handling` の書き込み流れ: 成功
+- `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver`: 成功
+  - `mock.running.001` 書き込みでControlCommandが `DriverAck` になることを確認
 - `Tag Server REST snapshot -> Preview Runtime` の初期値取得: 成功
 - `Screen Definition -> Tag resolve -> Tag Server REST snapshot -> Preview Runtime` の初期値取得: 成功
 - `Screen Definition + TagSnapshot -> ScreenProjection` のオブジェクト投影: 成功

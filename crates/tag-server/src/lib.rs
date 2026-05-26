@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
 use scada_core::command::{ControlCommand, ControlCommandStatus};
-use scada_core::driver::DriverWriteRequest;
+use scada_core::driver::{
+    driver_write_request_to_json, driver_write_response_from_json_str,
+    driver_write_response_to_json, DriverWriteRequest, DriverWriteResponse,
+};
 use scada_core::mqtt::{tag_value_topic, MqttBrokerEndpoint, MqttBrokerTransport};
 use scada_core::tag::{
     tag_value_from_json_value, tag_value_to_json, QualityCode, TagValue, TagValueData,
@@ -44,6 +47,7 @@ pub struct TagServerApi {
     write_policy: WritePolicy,
     required_token: Option<String>,
     mqtt: Option<MqttPublishConfig>,
+    driver_manager: Option<DriverManagerClientConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,6 +55,11 @@ pub struct MqttPublishConfig {
     pub endpoint: MqttBrokerEndpoint,
     pub client_id: String,
     pub timeout: Duration,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DriverManagerClientConfig {
+    pub base_url: String,
 }
 
 impl WritePolicy {
@@ -185,6 +194,7 @@ impl TagServerApi {
             write_policy,
             required_token: None,
             mqtt: None,
+            driver_manager: None,
         }
     }
 
@@ -209,6 +219,14 @@ impl TagServerApi {
 
     pub fn with_mqtt_publish(mut self, mqtt: Option<MqttPublishConfig>) -> Self {
         self.mqtt = mqtt;
+        self
+    }
+
+    pub fn with_driver_manager(
+        mut self,
+        driver_manager: Option<DriverManagerClientConfig>,
+    ) -> Self {
+        self.driver_manager = driver_manager;
         self
     }
 
@@ -363,14 +381,46 @@ impl TagServerApi {
         );
 
         match self.write_policy.validate(&mut command) {
-            Ok(driver_request) => HttpResponse::json(
-                202,
-                format!(
-                    r#"{{"command":{},"driver_request":{}}}"#,
-                    control_command_to_json(&command),
-                    driver_write_request_to_json(&driver_request)
-                ),
-            ),
+            Ok(driver_request) => {
+                if let Some(driver_manager) = &self.driver_manager {
+                    command.transition_to(ControlCommandStatus::Sent);
+                    match post_driver_write(driver_manager, &driver_request) {
+                        Ok(driver_response) => {
+                            apply_driver_write_response(&mut command, &driver_response);
+                            HttpResponse::json(
+                                202,
+                                format!(
+                                    r#"{{"command":{},"driver_request":{},"driver_response":{}}}"#,
+                                    control_command_to_json(&command),
+                                    driver_write_request_to_json(&driver_request),
+                                    driver_write_response_to_json(&driver_response)
+                                ),
+                            )
+                        }
+                        Err(error) => {
+                            command.transition_to(ControlCommandStatus::Failed);
+                            HttpResponse::json(
+                                502,
+                                format!(
+                                    r#"{{"error":{},"command":{},"driver_request":{}}}"#,
+                                    json_string(&error),
+                                    control_command_to_json(&command),
+                                    driver_write_request_to_json(&driver_request)
+                                ),
+                            )
+                        }
+                    }
+                } else {
+                    HttpResponse::json(
+                        202,
+                        format!(
+                            r#"{{"command":{},"driver_request":{}}}"#,
+                            control_command_to_json(&command),
+                            driver_write_request_to_json(&driver_request)
+                        ),
+                    )
+                }
+            }
             Err(error) => HttpResponse::json(
                 409,
                 format!(
@@ -381,6 +431,115 @@ impl TagServerApi {
             ),
         }
     }
+}
+
+fn apply_driver_write_response(command: &mut ControlCommand, response: &DriverWriteResponse) {
+    if response.accepted {
+        command.transition_to(ControlCommandStatus::DriverAck);
+    } else {
+        command.transition_to(ControlCommandStatus::Failed);
+    }
+}
+
+fn post_driver_write(
+    config: &DriverManagerClientConfig,
+    request: &DriverWriteRequest,
+) -> Result<DriverWriteResponse, String> {
+    let endpoint = HttpEndpoint::parse(&config.base_url)?;
+    let body = driver_write_request_to_json(request);
+    let http_request = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        endpoint.path_with("/api/v1/driver-writes"),
+        endpoint.host,
+        body.as_bytes().len(),
+        body
+    );
+    let mut stream =
+        TcpStream::connect((endpoint.host.as_str(), endpoint.port)).map_err(|error| {
+            format!(
+                "connect driver manager {}:{}: {error}",
+                endpoint.host, endpoint.port
+            )
+        })?;
+    stream
+        .write_all(http_request.as_bytes())
+        .map_err(|error| format!("write driver manager request: {error}"))?;
+    let mut raw_response = String::new();
+    stream
+        .read_to_string(&mut raw_response)
+        .map_err(|error| format!("read driver manager response: {error}"))?;
+    let (status, body) = parse_http_response(&raw_response)?;
+    if !(200..300).contains(&status) {
+        return Err(format!("driver manager returned status {status}: {body}"));
+    }
+
+    driver_write_response_from_json_str(&body)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HttpEndpoint {
+    host: String,
+    port: u16,
+    base_path: String,
+}
+
+impl HttpEndpoint {
+    fn parse(input: &str) -> Result<Self, String> {
+        let without_scheme = input
+            .strip_prefix("http://")
+            .ok_or_else(|| "driver manager URL must start with http://".to_string())?;
+        let (authority, path) = without_scheme
+            .split_once('/')
+            .map(|(authority, path)| (authority, format!("/{path}")))
+            .unwrap_or((without_scheme, String::new()));
+        if authority.is_empty() {
+            return Err("driver manager URL is missing host".to_string());
+        }
+        let (host, port) = match authority.rsplit_once(':') {
+            Some((host, port)) => {
+                let parsed_port = port
+                    .parse::<u16>()
+                    .map_err(|_| format!("invalid driver manager port: {port}"))?;
+                (host.to_string(), parsed_port)
+            }
+            None => (authority.to_string(), 80),
+        };
+        if host.is_empty() {
+            return Err("driver manager URL is missing host".to_string());
+        }
+
+        Ok(Self {
+            host,
+            port,
+            base_path: path.trim_end_matches('/').to_string(),
+        })
+    }
+
+    fn path_with(&self, suffix: &str) -> String {
+        if self.base_path.is_empty() {
+            suffix.to_string()
+        } else {
+            format!("{}{}", self.base_path, suffix)
+        }
+    }
+}
+
+fn parse_http_response(raw: &str) -> Result<(u16, String), String> {
+    let (head, body) = raw
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "malformed HTTP response".to_string())?;
+    let status_line = head
+        .lines()
+        .next()
+        .ok_or_else(|| "missing HTTP status line".to_string())?;
+    let status = status_line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| "missing HTTP status code".to_string())?
+        .parse::<u16>()
+        .map_err(|error| format!("invalid HTTP status code: {error}"))?;
+
+    Ok((status, body.to_string()))
 }
 
 pub fn run_server(addr: &str, api: &mut TagServerApi) -> std::io::Result<()> {
@@ -640,15 +799,6 @@ fn control_command_to_json(command: &ControlCommand) -> String {
         json_string(command.status.as_str()),
         json_string(&command.requested_at),
         command.timeout_ms,
-    )
-}
-
-fn driver_write_request_to_json(request: &DriverWriteRequest) -> String {
-    format!(
-        r#"{{"command_id":{},"tag_id":{},"value":{}}}"#,
-        json_string(&request.command_id),
-        json_string(&request.tag_id),
-        json_string(&request.value)
     )
 }
 

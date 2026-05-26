@@ -146,6 +146,19 @@ paths:
                       - command_id
                       - tag_id
                       - value
+                  driver_response:
+                    type: object
+                    properties:
+                      command_id:
+                        type: string
+                      accepted:
+                        type: boolean
+                      message:
+                        type: string
+                    required:
+                      - command_id
+                      - accepted
+                      - message
                 required:
                   - command
                   - driver_request
@@ -155,3 +168,5 @@ paths:
           description: Local API token is missing or invalid
         "409":
           description: Control command rejected by write policy
+        "502":
+          description: Driver Manager write forwarding failed

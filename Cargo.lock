@@ -172,6 +172,7 @@ dependencies = [
 name = "driver-manager"
 version = "0.1.0"
 dependencies = [
+ "mock-driver",
  "scada-core",
  "serde_json",
 ]

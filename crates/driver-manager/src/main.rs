@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use driver_manager::{
-    run_mock_driver_cycle, run_mock_driver_cycle_with_normalizer, DriverManagerCycleConfig,
-    ValueNormalizer,
+    run_mock_driver_cycle, run_mock_driver_cycle_with_normalizer, run_mock_write_server,
+    DriverManagerCycleConfig, ValueNormalizer,
 };
 use scada_core::service::{print_health, ServiceRole};
 
@@ -37,6 +37,14 @@ fn main() {
     }
     if args.iter().any(|arg| arg == "--run-mock-loop") {
         let config = mock_cycle_config(&args);
+        if let Some(write_addr) = arg_value(&args, "--write-addr") {
+            std::thread::spawn(move || {
+                eprintln!("driver-manager mock write server listening on {write_addr}");
+                if let Err(error) = run_mock_write_server(&write_addr) {
+                    eprintln!("driver-manager mock write server failed: {error}");
+                }
+            });
+        }
         let startup_delay_ms = arg_value(&args, "--startup-delay-ms")
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(0);
