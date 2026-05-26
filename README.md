@@ -9,3 +9,4 @@ SCADAアプリケーション開発プロジェクトです。
 - [SCADAアプリ 開発計画書](docs/development_plan.md)
 - [フェーズ0 実装メモ](docs/phase0_implementation_notes.md)
 - [開発進行状況](docs/progress.md)
+- [コンテキストリセット用ハンドオフ](docs/handoff.md)

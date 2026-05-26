@@ -124,9 +124,9 @@
 - `80be2dd feat: add preview runtime snapshot client`
 - `ae7da7f feat: add screen-based snapshot flow in preview runtime`
 - `a3b91d9 feat: add screen projection model for runtime snapshot`
-- 今回の変更: `feat: add runtime delta application foundation`
-- 未コミット変更: `feat: add rumqtt mqtt receive/publish commands in preview runtime`
-- 未コミット変更: `chore: use rumqtt rustls websocket transport`
+- `ad9d4bd feat: add runtime delta application foundation`
+- `80ab4bb feat: add rumqtt mqtt io foundation for preview runtime`
+- `24b817a chore: use rumqtt rustls websocket transport`
 
 ## 注意メモ
 

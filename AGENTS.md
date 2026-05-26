@@ -9,8 +9,10 @@ Primary documents:
 - `docs/scada_basic_design.md`: Basic design and architecture source of truth.
 - `docs/development_plan.md`: Development phases, deliverables, and completion criteria.
 - `docs/design_review_findings.md`: Review findings and rationale behind important design decisions.
+- `docs/handoff.md`: Short restart guide for context resets.
 
 Agents must read the relevant design sections before making architecture or implementation changes.
+After a context reset, read `docs/handoff.md` first, then confirm the current state with `git status --short`.
 
 ## Core Architecture Principles
 
