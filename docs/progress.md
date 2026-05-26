@@ -70,6 +70,7 @@
   - `preview-runtime --mqtt-receive-once`
   - `preview-runtime --mqtt-publish-delta`
   - topic/payload検証を既存delta適用ロジックへ統合
+  - `aws-lc-sys` を含むRustls default + WebSocket feature構成で検証
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
@@ -104,6 +105,7 @@
 - `--snapshot-screen` で投影サマリー出力確認: 成功
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --simulate-delta`: 成功
 - `cargo test` (rumqtt追加後): 成功
+- `cargo test` (`rumqttc` default Rustls + `websocket`, `aws-lc-sys` あり): 成功
 
 ## セーブポイント
 
@@ -124,6 +126,7 @@
 - `a3b91d9 feat: add screen projection model for runtime snapshot`
 - 今回の変更: `feat: add runtime delta application foundation`
 - 未コミット変更: `feat: add rumqtt mqtt receive/publish commands in preview runtime`
+- 未コミット変更: `chore: use rumqtt rustls websocket transport`
 
 ## 注意メモ
 

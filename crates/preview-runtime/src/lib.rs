@@ -5,7 +5,7 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
-use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
+use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
 use scada_core::mqtt::tag_value_topic;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -317,6 +317,7 @@ pub fn resolve_tag_ids_from_screen(definition: &ScreenDefinition) -> Vec<String>
         }
     }
 
+    resolved.sort();
     resolved
 }
 
@@ -597,8 +598,15 @@ async fn publish_delta_via_mqtt_async(
 }
 
 fn mqtt_options(config: &MqttConnectionConfig) -> MqttOptions {
-    let options = MqttOptions::new(&config.client_id, &config.host, config.port);
-    let _ = config.use_websocket;
+    let host = if config.use_websocket && !config.host.starts_with("ws://") {
+        format!("ws://{}:{}/mqtt", config.host, config.port)
+    } else {
+        config.host.clone()
+    };
+    let mut options = MqttOptions::new(&config.client_id, host, config.port);
+    if config.use_websocket {
+        options.set_transport(Transport::ws());
+    }
     options
 }
 
@@ -723,7 +731,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_screen_tag_ids_deduplicates_preserving_first_seen() {
+    fn resolve_screen_tag_ids_deduplicates_with_stable_order() {
         let definition = ScreenDefinition {
             schema_version: "1.0.0".to_string(),
             screen_id: "main".to_string(),
@@ -762,8 +770,8 @@ mod tests {
         let tags = resolve_tag_ids_from_screen(&definition);
         assert_eq!(
             vec![
-                "mock.temperature.001".to_string(),
-                "mock.running.001".to_string()
+                "mock.running.001".to_string(),
+                "mock.temperature.001".to_string()
             ],
             tags
         );
