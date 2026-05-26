@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use preview_runtime::{
-    default_snapshot_tags, format_screen_projection_summary, format_snapshot_summary,
-    load_screen_definition, project_snapshot_to_screen, resolve_tag_ids_from_screen,
+    apply_delta_to_projection, default_snapshot_tags, format_delta_apply_result,
+    format_screen_projection_summary, format_snapshot_summary, load_screen_definition,
+    parse_tag_value_delta, project_snapshot_to_screen, resolve_tag_ids_from_screen,
     TagServerClient,
 };
 use scada_core::service::{print_health, ServiceRole, LOCAL_TOKEN_ENV};
@@ -80,7 +81,7 @@ fn main() {
 
         match client.fetch_snapshot(&definition.project_id, &tags) {
             Ok(snapshot) => {
-                let projection = project_snapshot_to_screen(&definition, &snapshot);
+                let mut projection = project_snapshot_to_screen(&definition, &snapshot);
                 println!(
                     "screen={} objects={} tags={}",
                     definition.screen_id,
@@ -89,6 +90,26 @@ fn main() {
                 );
                 println!("{}", format_snapshot_summary(&snapshot));
                 println!("{}", format_screen_projection_summary(&projection));
+
+                if args.iter().any(|arg| arg == "--simulate-delta") {
+                    let topic = arg_value(&args, "--delta-topic")
+                        .unwrap_or_else(|| "scada/demo/tag/mock.running.001/value".to_string());
+                    let payload = arg_value(&args, "--delta-payload").unwrap_or_else(|| {
+                        r#"{"tag_id":"mock.running.001","value":true,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:02Z","server_timestamp":"1970-01-01T00:00:02Z","sequence":2,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}"#.to_string()
+                    });
+
+                    match parse_tag_value_delta(&definition.project_id, &topic, &payload) {
+                        Ok(delta) => {
+                            let result = apply_delta_to_projection(&mut projection, &delta.value);
+                            println!("{}", format_delta_apply_result(&result));
+                            println!("{}", format_screen_projection_summary(&projection));
+                        }
+                        Err(error) => {
+                            eprintln!("preview-runtime simulate-delta failed: {error}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
             }
             Err(error) => {
                 eprintln!("preview-runtime snapshot-screen failed: {error}");

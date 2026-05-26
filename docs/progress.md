@@ -61,17 +61,22 @@
   - `ScreenDefinition + TagSnapshot -> ScreenProjection`
   - bindingごとの value/quality/sequence 解決
   - `preview-runtime --snapshot-screen` に投影サマリー出力を追加
+- Runtime delta適用基盤実装
+  - MQTT tag value topicとpayloadの整合確認
+  - sequenceが新しいdeltaのみ投影へ適用
+  - stale deltaの破棄
+  - `preview-runtime --snapshot-screen --simulate-delta`
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
 
-- Runtimeリアルタイム反映フローの準備
+- MQTT over WebSocket実接続の準備
 
 ## 次に行うこと
 
-1. MQTT over WebSocketのdelta受信とsequenceベース更新を追加する。
-2. REST snapshot + MQTT deltaの再接続整合を確認する。
-3. 画面オブジェクト投影モデルへdelta適用を追加する。
+1. MQTT Broker選定とローカル起動方式を決める。
+2. MQTT over WebSocketの購読クライアントをPreview Runtimeへ追加する。
+3. REST snapshot + MQTT deltaの再接続整合を確認する。
 
 ## 最新検証
 
@@ -92,6 +97,7 @@
 - `target/debug/preview-runtime --snapshot --tag-server http://127.0.0.1:18080 --project-id demo`: 成功
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080`: 成功
 - `--snapshot-screen` で投影サマリー出力確認: 成功
+- `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --simulate-delta`: 成功
 
 ## セーブポイント
 
@@ -109,7 +115,8 @@
 - `9f562c7 chore: update toolchains and version policy`
 - `80be2dd feat: add preview runtime snapshot client`
 - `ae7da7f feat: add screen-based snapshot flow in preview runtime`
-- 今回の変更: `feat: add screen projection model for runtime snapshot`
+- `a3b91d9 feat: add screen projection model for runtime snapshot`
+- 今回の変更: `feat: add runtime delta application foundation`
 
 ## 注意メモ
 

@@ -5,6 +5,7 @@ use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
+use scada_core::mqtt::tag_value_topic;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -97,6 +98,21 @@ pub struct ObjectBindingState {
     pub sequence: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeDeltaMessage {
+    pub topic: String,
+    pub value: RuntimeTagValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeltaApplyResult {
+    pub tag_id: String,
+    pub matched_bindings: usize,
+    pub applied_bindings: usize,
+    pub ignored_stale_bindings: usize,
+    pub affected_object_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HttpClientResponse {
     pub status_code: u16,
@@ -110,6 +126,7 @@ pub enum RuntimeClientError {
     Io(String),
     Http(String),
     Json(String),
+    MqttDelta(String),
     ScreenDefinition(String),
     ServerStatus {
         status_code: u16,
@@ -239,6 +256,7 @@ impl fmt::Display for RuntimeClientError {
             Self::Io(message) => write!(formatter, "io error: {message}"),
             Self::Http(message) => write!(formatter, "http error: {message}"),
             Self::Json(message) => write!(formatter, "json error: {message}"),
+            Self::MqttDelta(message) => write!(formatter, "mqtt delta error: {message}"),
             Self::ScreenDefinition(message) => {
                 write!(formatter, "screen definition error: {message}")
             }
@@ -402,6 +420,82 @@ pub fn format_screen_projection_summary(projection: &ScreenProjection) -> String
     }
 
     lines.join("\n")
+}
+
+pub fn parse_tag_value_delta(
+    project_id: &str,
+    topic: &str,
+    payload: &str,
+) -> Result<RuntimeDeltaMessage, RuntimeClientError> {
+    let value: RuntimeTagValue = serde_json::from_str(payload)
+        .map_err(|error| RuntimeClientError::Json(error.to_string()))?;
+    let expected_topic = tag_value_topic(project_id, &value.tag_id);
+
+    if topic != expected_topic {
+        return Err(RuntimeClientError::MqttDelta(format!(
+            "topic {topic} does not match expected {expected_topic}"
+        )));
+    }
+
+    Ok(RuntimeDeltaMessage {
+        topic: topic.to_string(),
+        value,
+    })
+}
+
+pub fn apply_delta_to_projection(
+    projection: &mut ScreenProjection,
+    delta: &RuntimeTagValue,
+) -> DeltaApplyResult {
+    let mut result = DeltaApplyResult {
+        tag_id: delta.tag_id.clone(),
+        matched_bindings: 0,
+        applied_bindings: 0,
+        ignored_stale_bindings: 0,
+        affected_object_ids: Vec::new(),
+    };
+
+    for object in &mut projection.object_states {
+        let mut object_changed = false;
+        for binding in &mut object.bindings {
+            if binding.tag_id != delta.tag_id {
+                continue;
+            }
+
+            result.matched_bindings += 1;
+            if binding
+                .sequence
+                .map(|sequence| delta.sequence <= sequence)
+                .unwrap_or(false)
+            {
+                result.ignored_stale_bindings += 1;
+                continue;
+            }
+
+            binding.value = Some(delta.value.clone());
+            binding.quality = Some(delta.quality.clone());
+            binding.sequence = Some(delta.sequence);
+            result.applied_bindings += 1;
+            object_changed = true;
+        }
+
+        if object_changed {
+            result.affected_object_ids.push(object.object_id.clone());
+        }
+    }
+
+    result
+}
+
+pub fn format_delta_apply_result(result: &DeltaApplyResult) -> String {
+    format!(
+        "delta tag={} matched={} applied={} stale={} affected={}",
+        result.tag_id,
+        result.matched_bindings,
+        result.applied_bindings,
+        result.ignored_stale_bindings,
+        result.affected_object_ids.join(",")
+    )
 }
 
 fn build_http_request(
@@ -622,5 +716,88 @@ mod tests {
             projection.object_states[0].bindings[1].value
         );
         assert_eq!(None, projection.object_states[0].bindings[0].value);
+    }
+
+    #[test]
+    fn delta_parser_requires_matching_topic() {
+        let payload = r#"{"tag_id":"mock.running.001","value":true,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:01Z","server_timestamp":"1970-01-01T00:00:01Z","sequence":2,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}"#;
+
+        let delta = parse_tag_value_delta("demo", "scada/demo/tag/mock.running.001/value", payload)
+            .expect("delta");
+
+        assert_eq!("mock.running.001", delta.value.tag_id);
+        assert!(parse_tag_value_delta("demo", "scada/demo/tag/other/value", payload).is_err());
+    }
+
+    #[test]
+    fn delta_apply_updates_newer_bindings_and_ignores_stale() {
+        let mut projection = ScreenProjection {
+            screen_id: "main".to_string(),
+            project_id: "demo".to_string(),
+            object_states: vec![ScreenObjectState {
+                object_id: "pump".to_string(),
+                svg_asset_id: "pump-symbol".to_string(),
+                bindings: vec![
+                    ObjectBindingState {
+                        key: "state".to_string(),
+                        tag_id: "mock.running.001".to_string(),
+                        value: Some(Value::Bool(false)),
+                        quality: Some("Simulated".to_string()),
+                        sequence: Some(1),
+                    },
+                    ObjectBindingState {
+                        key: "old".to_string(),
+                        tag_id: "mock.temperature.001".to_string(),
+                        value: Some(Value::from(21.0)),
+                        quality: Some("Simulated".to_string()),
+                        sequence: Some(5),
+                    },
+                ],
+            }],
+        };
+        let newer = RuntimeTagValue {
+            tag_id: "mock.running.001".to_string(),
+            value: Value::Bool(true),
+            data_type: "boolean".to_string(),
+            quality: "Simulated".to_string(),
+            source_timestamp: "1970-01-01T00:00:02Z".to_string(),
+            server_timestamp: "1970-01-01T00:00:02Z".to_string(),
+            sequence: 2,
+            scan_interval_ms: 1000,
+            stale_after_ms: 3000,
+            driver_id: "mock-driver".to_string(),
+            endpoint_id: "mock-endpoint".to_string(),
+            read_status: "ok".to_string(),
+            write_status: "idle".to_string(),
+        };
+        let stale = RuntimeTagValue {
+            tag_id: "mock.temperature.001".to_string(),
+            value: Value::from(19.0),
+            data_type: "float".to_string(),
+            quality: "Simulated".to_string(),
+            source_timestamp: "1970-01-01T00:00:01Z".to_string(),
+            server_timestamp: "1970-01-01T00:00:01Z".to_string(),
+            sequence: 4,
+            scan_interval_ms: 1000,
+            stale_after_ms: 3000,
+            driver_id: "mock-driver".to_string(),
+            endpoint_id: "mock-endpoint".to_string(),
+            read_status: "ok".to_string(),
+            write_status: "idle".to_string(),
+        };
+
+        let newer_result = apply_delta_to_projection(&mut projection, &newer);
+        let stale_result = apply_delta_to_projection(&mut projection, &stale);
+
+        assert_eq!(1, newer_result.applied_bindings);
+        assert_eq!(
+            Some(Value::Bool(true)),
+            projection.object_states[0].bindings[0].value
+        );
+        assert_eq!(1, stale_result.ignored_stale_bindings);
+        assert_eq!(
+            Some(Value::from(21.0)),
+            projection.object_states[0].bindings[1].value
+        );
     }
 }
