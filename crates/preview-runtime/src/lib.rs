@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagServerEndpoint {
@@ -72,6 +72,29 @@ pub struct ScreenObjectDefinition {
     pub height: f64,
     #[serde(default)]
     pub tag_bindings: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScreenProjection {
+    pub screen_id: String,
+    pub project_id: String,
+    pub object_states: Vec<ScreenObjectState>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScreenObjectState {
+    pub object_id: String,
+    pub svg_asset_id: String,
+    pub bindings: Vec<ObjectBindingState>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectBindingState {
+    pub key: String,
+    pub tag_id: String,
+    pub value: Option<Value>,
+    pub quality: Option<String>,
+    pub sequence: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -286,6 +309,101 @@ pub fn format_snapshot_summary(snapshot: &TagSnapshot) -> String {
     lines.join("\n")
 }
 
+pub fn project_snapshot_to_screen(
+    definition: &ScreenDefinition,
+    snapshot: &TagSnapshot,
+) -> ScreenProjection {
+    let values_by_tag: HashMap<&str, &RuntimeTagValue> = snapshot
+        .values
+        .iter()
+        .map(|value| (value.tag_id.as_str(), value))
+        .collect();
+    let mut object_states = Vec::new();
+
+    for object in &definition.objects {
+        let mut bindings = Vec::new();
+        let mut binding_keys: Vec<_> = object.tag_bindings.keys().cloned().collect();
+        binding_keys.sort();
+
+        for key in binding_keys {
+            let tag_id = object
+                .tag_bindings
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| "".to_string());
+            let resolved = values_by_tag.get(tag_id.as_str()).copied();
+            bindings.push(ObjectBindingState {
+                key,
+                tag_id,
+                value: resolved.map(|value| value.value.clone()),
+                quality: resolved.map(|value| value.quality.clone()),
+                sequence: resolved.map(|value| value.sequence),
+            });
+        }
+
+        object_states.push(ScreenObjectState {
+            object_id: object.object_id.clone(),
+            svg_asset_id: object.svg_asset_id.clone(),
+            bindings,
+        });
+    }
+
+    ScreenProjection {
+        screen_id: definition.screen_id.clone(),
+        project_id: definition.project_id.clone(),
+        object_states,
+    }
+}
+
+pub fn format_screen_projection_summary(projection: &ScreenProjection) -> String {
+    let total_bindings: usize = projection
+        .object_states
+        .iter()
+        .map(|object| object.bindings.len())
+        .sum();
+    let missing_bindings: usize = projection
+        .object_states
+        .iter()
+        .flat_map(|object| object.bindings.iter())
+        .filter(|binding| binding.value.is_none())
+        .count();
+    let mut lines = vec![format!(
+        "projection screen={} objects={} bindings={} missing={}",
+        projection.screen_id,
+        projection.object_states.len(),
+        total_bindings,
+        missing_bindings
+    )];
+
+    for object in &projection.object_states {
+        lines.push(format!(
+            "object {} asset={}",
+            object.object_id, object.svg_asset_id
+        ));
+        for binding in &object.bindings {
+            let value = binding
+                .value
+                .as_ref()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "null".to_string());
+            let quality = binding
+                .quality
+                .clone()
+                .unwrap_or_else(|| "Missing".to_string());
+            let sequence = binding
+                .sequence
+                .map(|seq| seq.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            lines.push(format!(
+                "binding {} tag={} value={} quality={} seq={}",
+                binding.key, binding.tag_id, value, quality, sequence
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
 fn build_http_request(
     method: &str,
     path: &str,
@@ -451,5 +569,58 @@ mod tests {
             ],
             tags
         );
+    }
+
+    #[test]
+    fn projection_maps_values_to_object_bindings() {
+        let definition = ScreenDefinition {
+            schema_version: "1.0.0".to_string(),
+            screen_id: "main".to_string(),
+            project_id: "demo".to_string(),
+            name: "Main".to_string(),
+            canvas_width: 1280,
+            canvas_height: 720,
+            objects: vec![ScreenObjectDefinition {
+                object_id: "obj-1".to_string(),
+                svg_asset_id: "pump".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                tag_bindings: HashMap::from([
+                    ("value".to_string(), "mock.temperature.001".to_string()),
+                    ("state".to_string(), "missing.tag".to_string()),
+                ]),
+            }],
+        };
+        let snapshot = TagSnapshot {
+            values: vec![RuntimeTagValue {
+                tag_id: "mock.temperature.001".to_string(),
+                value: Value::from(21.0),
+                data_type: "float".to_string(),
+                quality: "Simulated".to_string(),
+                source_timestamp: "1970-01-01T00:00:00Z".to_string(),
+                server_timestamp: "1970-01-01T00:00:00Z".to_string(),
+                sequence: 1,
+                scan_interval_ms: 1000,
+                stale_after_ms: 3000,
+                driver_id: "mock-driver".to_string(),
+                endpoint_id: "mock-endpoint".to_string(),
+                read_status: "ok".to_string(),
+                write_status: "idle".to_string(),
+            }],
+            missing_tag_ids: vec!["missing.tag".to_string()],
+        };
+
+        let projection = project_snapshot_to_screen(&definition, &snapshot);
+
+        assert_eq!("main", projection.screen_id);
+        assert_eq!(1, projection.object_states.len());
+        assert_eq!(2, projection.object_states[0].bindings.len());
+        assert_eq!(
+            Some(Value::from(21.0)),
+            projection.object_states[0].bindings[1].value
+        );
+        assert_eq!(None, projection.object_states[0].bindings[0].value);
     }
 }

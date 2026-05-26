@@ -51,6 +51,9 @@
   - 画面定義JSON読込
   - `tag_bindings` からタグ一覧を解決
   - `--snapshot-screen` による画面定義ベースの初期タグ値取得確認
+  - 画面オブジェクト投影モデル
+    - `ScreenDefinition + TagSnapshot -> ScreenProjection`
+    - bindingごとの value/quality/sequence 解決
 - `tauri-shell`
   - ローカルサービス一覧表示
   - ローカルサービスの `--health` 実行
@@ -85,6 +88,7 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
 - `curl POST /api/v1/control-commands`: 成功
 - `target/debug/preview-runtime --snapshot --tag-server http://127.0.0.1:18080 --project-id demo`: 成功
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080`: 成功
+- `--snapshot-screen` の投影サマリー出力: 成功
 
 ## 縦断テスト
 
@@ -92,6 +96,7 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
 - `Tag Server WritePolicy -> Mock Driver -> Driver Manager response handling` の書き込み流れ: 成功
 - `Tag Server REST snapshot -> Preview Runtime` の初期値取得: 成功
 - `Screen Definition -> Tag resolve -> Tag Server REST snapshot -> Preview Runtime` の初期値取得: 成功
+- `Screen Definition + TagSnapshot -> ScreenProjection` のオブジェクト投影: 成功
 
 Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。
 Rust 1.66の増分コンパイルキャッシュでICEが発生していたが、Rust 1.95.0更新後は通常の `cargo test` が成功している。

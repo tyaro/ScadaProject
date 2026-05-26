@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use preview_runtime::{
-    default_snapshot_tags, format_snapshot_summary, load_screen_definition,
-    resolve_tag_ids_from_screen, TagServerClient,
+    default_snapshot_tags, format_screen_projection_summary, format_snapshot_summary,
+    load_screen_definition, project_snapshot_to_screen, resolve_tag_ids_from_screen,
+    TagServerClient,
 };
 use scada_core::service::{print_health, ServiceRole, LOCAL_TOKEN_ENV};
 
@@ -79,6 +80,7 @@ fn main() {
 
         match client.fetch_snapshot(&definition.project_id, &tags) {
             Ok(snapshot) => {
+                let projection = project_snapshot_to_screen(&definition, &snapshot);
                 println!(
                     "screen={} objects={} tags={}",
                     definition.screen_id,
@@ -86,6 +88,7 @@ fn main() {
                     tags.len()
                 );
                 println!("{}", format_snapshot_summary(&snapshot));
+                println!("{}", format_screen_projection_summary(&projection));
             }
             Err(error) => {
                 eprintln!("preview-runtime snapshot-screen failed: {error}");
