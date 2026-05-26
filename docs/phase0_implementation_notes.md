@@ -37,6 +37,10 @@
   - Quality Code
   - ControlCommand状態
   - MQTT topic生成
+- `tauri-shell`
+  - ローカルサービス一覧表示
+  - ローカルサービスの `--health` 実行
+  - `--bin-dir` 指定によるサービスバイナリ探索
 
 ## まだ実装しないもの
 
@@ -53,5 +57,7 @@
 - `cargo fmt`: 成功
 - `cargo check`: 成功
 - `cargo test`: 成功
+- `cargo build`: 成功
+- `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
 
 Xcodeライセンス承諾後、ワークスペース全体のテストが成功した。
