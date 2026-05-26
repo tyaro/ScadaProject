@@ -49,16 +49,20 @@
   - `POST /api/v1/tags/snapshot`
   - `POST /api/v1/control-commands`
   - 起動時トークンによるローカルAPI認証
+- Preview Runtimeのsnapshot取得境界実装
+  - `serde` / `serde_json` による型付きsnapshot DTO
+  - Tag Server REST API向け最小HTTPクライアント
+  - `preview-runtime --snapshot`
 - Xcodeライセンス承諾後の `cargo test` 成功
 
 ## 現在作業中
 
-- REST APIを使ったRuntime/Builder境界の準備
+- Runtime初期表示フローの準備
 
 ## 次に行うこと
 
-1. `preview-runtime` からTag Server snapshot APIを呼び出す最小Runtime境界を追加する。
-2. 画面ランタイム用の初期タグ値取得フローをRESTで縦断確認する。
+1. 最小画面定義を追加し、画面が必要とするタグ一覧をRuntime側で解決する。
+2. 画面ランタイム用の初期タグ値取得フローを画面定義ベースで確認する。
 3. その後、MQTT over WebSocketによるdelta購読へ進む。
 
 ## 最新検証
@@ -77,6 +81,7 @@
 - `curl http://127.0.0.1:18080/health`: 成功
 - `curl POST /api/v1/tags/snapshot`: 成功
 - `curl POST /api/v1/control-commands`: 成功
+- `target/debug/preview-runtime --snapshot --tag-server http://127.0.0.1:18080 --project-id demo`: 成功
 
 ## セーブポイント
 
@@ -91,7 +96,8 @@
 - `81928f5 feat: add local runtime startup plan`
 - `2012b5f feat: add local supervisor progress tracking`
 - `2f52046 feat: add tag server rest api`
-- 今回の変更: `chore: update toolchains and version policy`
+- `9f562c7 chore: update toolchains and version policy`
+- 今回の変更: `feat: add preview runtime snapshot client`
 
 ## 注意メモ
 
@@ -100,3 +106,4 @@
 - HomebrewはmacOS 26.5を未対応扱いして失敗するため、Node 24 LTSはnvmで導入した。
 - Codexプロセスの既存PATHは起動時のNode 18を保持している場合がある。新規ログインシェルでは `.zprofile` 経由でnvm defaultのNode 24が有効になる。
 - ローカルポートbindとcurl確認はサンドボックス外権限で実施した。
+- 追加クレート取得とローカルTCP縦断確認はサンドボックス外権限で実施した。
