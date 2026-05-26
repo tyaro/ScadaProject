@@ -45,6 +45,7 @@
   - `--bin-dir` 指定によるサービスバイナリ探索
   - 起動時ローカルトークン生成
   - `SCADA_LOCAL_TOKEN` と `SCADA_BIND_HOST` を含むサービス起動計画表示
+  - `--supervise-once` による子プロセス起動、状態観測、停止
 
 ## まだ実装しないもの
 
@@ -64,6 +65,7 @@
 - `cargo build`: 成功
 - `target/debug/tauri-shell --check-services --bin-dir target/debug`: 成功
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug`: 成功
+- `target/debug/tauri-shell --supervise-once --bin-dir target/debug`: 成功
 
 ## 縦断テスト
 

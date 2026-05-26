@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use scada_core::service::{default_local_services, print_health, ServiceRole};
 use tauri_shell::{
     check_default_services, create_local_runtime_config, default_service_bin_dir, mask_token,
-    service_start_plan,
+    service_start_plan, supervise_once,
 };
 
 fn main() {
@@ -77,6 +77,31 @@ fn main() {
                 item.token_env.0,
                 mask_token(&item.token_env.1)
             );
+        }
+        return;
+    }
+    if args.iter().any(|arg| arg == "--supervise-once") {
+        let bin_dir = match bin_dir_arg(&args) {
+            Some(path) => path,
+            None => std::env::current_exe()
+                .map(|path| default_service_bin_dir(&path))
+                .unwrap_or_else(|_| PathBuf::from(".")),
+        };
+        let bind_host = bind_host_arg(&args).unwrap_or_else(|| "127.0.0.1".to_string());
+        let config = create_local_runtime_config(&bind_host);
+        let statuses = supervise_once(&bin_dir, &config);
+        let mut ok = true;
+
+        for status in statuses {
+            println!(
+                "{} started={} exited={} exit_code={:?} {}",
+                status.service, status.started, status.exited, status.exit_code, status.message
+            );
+            ok = ok && status.started;
+        }
+
+        if !ok {
+            std::process::exit(1);
         }
         return;
     }

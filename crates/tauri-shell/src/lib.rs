@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 
 use scada_core::service::{
     default_local_services, generate_startup_token, LocalRuntimeConfig, LocalServiceSpec,
@@ -19,6 +19,38 @@ pub struct ServiceStartPlan {
     pub binary_path: PathBuf,
     pub bind_host_env: (&'static str, String),
     pub token_env: (&'static str, String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SupervisedServiceStatus {
+    pub service: String,
+    pub started: bool,
+    pub exited: bool,
+    pub exit_code: Option<i32>,
+    pub message: String,
+}
+
+#[derive(Debug)]
+pub struct SupervisedChild {
+    pub service: String,
+    child: Child,
+}
+
+impl SupervisedChild {
+    pub fn service(&self) -> &str {
+        &self.service
+    }
+
+    pub fn stop(&mut self) -> std::io::Result<()> {
+        match self.child.try_wait()? {
+            Some(_) => Ok(()),
+            None => {
+                self.child.kill()?;
+                let _ = self.child.wait()?;
+                Ok(())
+            }
+        }
+    }
 }
 
 pub fn default_service_bin_dir(current_exe: &Path) -> PathBuf {
@@ -93,6 +125,76 @@ pub fn service_start_plan(bin_dir: &Path, config: &LocalRuntimeConfig) -> Vec<Se
         .collect()
 }
 
+pub fn spawn_service(plan: &ServiceStartPlan) -> Result<SupervisedChild, String> {
+    let child = Command::new(&plan.binary_path)
+        .env(plan.bind_host_env.0, &plan.bind_host_env.1)
+        .env(plan.token_env.0, &plan.token_env.1)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+
+    Ok(SupervisedChild {
+        service: plan.service.clone(),
+        child,
+    })
+}
+
+pub fn poll_child_status(child: &mut SupervisedChild) -> SupervisedServiceStatus {
+    match child.child.try_wait() {
+        Ok(Some(status)) => SupervisedServiceStatus {
+            service: child.service.clone(),
+            started: true,
+            exited: true,
+            exit_code: status.code(),
+            message: "process exited".to_string(),
+        },
+        Ok(None) => SupervisedServiceStatus {
+            service: child.service.clone(),
+            started: true,
+            exited: false,
+            exit_code: None,
+            message: "process running".to_string(),
+        },
+        Err(error) => SupervisedServiceStatus {
+            service: child.service.clone(),
+            started: true,
+            exited: false,
+            exit_code: None,
+            message: error.to_string(),
+        },
+    }
+}
+
+pub fn supervise_once(bin_dir: &Path, config: &LocalRuntimeConfig) -> Vec<SupervisedServiceStatus> {
+    let plans = service_start_plan(bin_dir, config);
+    let mut children = Vec::new();
+    let mut statuses = Vec::new();
+
+    for plan in plans {
+        match spawn_service(&plan) {
+            Ok(child) => children.push(child),
+            Err(error) => statuses.push(SupervisedServiceStatus {
+                service: plan.service,
+                started: false,
+                exited: false,
+                exit_code: None,
+                message: error,
+            }),
+        }
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    for mut child in children {
+        let status = poll_child_status(&mut child);
+        let _ = child.stop();
+        statuses.push(status);
+    }
+
+    statuses
+}
+
 pub fn mask_token(token: &str) -> String {
     if token.len() <= 8 {
         return "****".to_string();
@@ -160,5 +262,19 @@ mod tests {
     #[test]
     fn token_mask_hides_middle() {
         assert_eq!("local-...abcd", mask_token("local-secret-abcd"));
+    }
+
+    #[test]
+    fn stop_accepts_short_lived_process() {
+        let child = Command::new("/bin/echo")
+            .arg("ok")
+            .spawn()
+            .expect("spawn echo");
+        let mut child = SupervisedChild {
+            service: "echo".to_string(),
+            child,
+        };
+
+        child.stop().expect("stop process");
     }
 }

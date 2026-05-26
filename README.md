@@ -8,3 +8,4 @@ SCADAアプリケーション開発プロジェクトです。
 - [基本設計レビュー指摘事項](docs/design_review_findings.md)
 - [SCADAアプリ 開発計画書](docs/development_plan.md)
 - [フェーズ0 実装メモ](docs/phase0_implementation_notes.md)
+- [開発進行状況](docs/progress.md)
