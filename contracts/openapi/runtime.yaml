@@ -63,6 +63,57 @@ paths:
           description: Invalid snapshot request
         "401":
           description: Local API token is missing or invalid
+  /api/v1/driver-values:
+    post:
+      summary: Ingest normalized driver values into the Tag Server cache
+      description: Phase 0 internal endpoint used by Driver Manager until the gRPC boundary is implemented.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  type: string
+                values:
+                  type: array
+                  items:
+                    $ref: "../schemas/tag-value.schema.json"
+              required:
+                - project_id
+                - values
+      responses:
+        "202":
+          description: Driver values were accepted for latest-value cache ingestion
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: integer
+                    minimum: 0
+                  ingested:
+                    type: integer
+                    minimum: 0
+                  stale:
+                    type: integer
+                    minimum: 0
+                  published:
+                    type: integer
+                    minimum: 0
+                required:
+                  - received
+                  - ingested
+                  - stale
+                  - published
+        "400":
+          description: Invalid driver value payload
+        "401":
+          description: Local API token is missing or invalid
+        "502":
+          description: Driver values were ingested, but MQTT publish failed
   /api/v1/control-commands:
     post:
       summary: Request a tag write/control command

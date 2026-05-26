@@ -1,5 +1,8 @@
+use std::time::Duration;
+
+use scada_core::mqtt::MqttBrokerEndpoint;
 use scada_core::service::{print_health, ServiceRole, LOCAL_BIND_HOST_ENV, LOCAL_TOKEN_ENV};
-use tag_server::{run_server, TagServerApi};
+use tag_server::{run_server, MqttPublishConfig, TagServerApi};
 
 const TAG_SERVER_PORT_ENV: &str = "SCADA_TAG_SERVER_PORT";
 
@@ -12,7 +15,10 @@ fn main() {
     if args.iter().any(|arg| arg == "--serve") {
         let addr = serve_addr(&args);
         let required_token = std::env::var(LOCAL_TOKEN_ENV).ok();
-        let mut api = TagServerApi::phase0_mock().with_required_token(required_token);
+        let mqtt = mqtt_config_from_args(&args);
+        let mut api = TagServerApi::phase0_mock()
+            .with_required_token(required_token)
+            .with_mqtt_publish(mqtt);
 
         eprintln!("tag-server listening on {addr}");
         if let Err(error) = run_server(&addr, &mut api) {
@@ -23,6 +29,28 @@ fn main() {
     }
 
     println!("tag-server skeleton");
+}
+
+fn mqtt_config_from_args(args: &[String]) -> Option<MqttPublishConfig> {
+    let url = arg_value(args, "--mqtt-url")?;
+    let endpoint = match MqttBrokerEndpoint::parse(&url) {
+        Ok(endpoint) => endpoint,
+        Err(error) => {
+            eprintln!("tag-server mqtt config failed: invalid --mqtt-url: {error}");
+            std::process::exit(1);
+        }
+    };
+    let client_id = arg_value(args, "--mqtt-client-id")
+        .unwrap_or_else(|| format!("tag-server-{}", std::process::id()));
+    let timeout_secs = arg_value(args, "--mqtt-timeout-secs")
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(5);
+
+    Some(MqttPublishConfig {
+        endpoint,
+        client_id,
+        timeout: Duration::from_secs(timeout_secs),
+    })
 }
 
 fn serve_addr(args: &[String]) -> String {

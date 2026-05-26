@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scada.local/schemas/tauri-shell-service-config.schema.json",
+  "title": "TauriShellServiceConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+    "mqtt_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Broker endpoint accepted by scada-core MqttBrokerEndpoint. Supported forms: mqtt://host:port, tcp://host:port, ws://host:port/path, or host[:port].",
+      "pattern": "^(mqtt://|tcp://|ws://)?[^\\s]+$"
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": { "type": "string", "minLength": 1 },
+          "binary_path": { "type": "string", "minLength": 1 },
+          "args": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "envs": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "restart_on_exit": { "type": "boolean" },
+          "restart_max_attempts": { "type": "integer", "minimum": 0 },
+          "restart_backoff_ms": { "type": "integer", "minimum": 0 },
+          "restart_reset_after_ms": { "type": "integer", "minimum": 0 }
+        },
+        "required": ["service"]
+      }
+    }
+  },
+  "required": ["services"]
+}

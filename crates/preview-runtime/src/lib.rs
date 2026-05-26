@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
-use scada_core::mqtt::tag_value_topic;
+use scada_core::mqtt::{tag_value_topic, MqttBrokerEndpoint, MqttBrokerTransport};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -118,9 +118,7 @@ pub struct DeltaApplyResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MqttConnectionConfig {
-    pub host: String,
-    pub port: u16,
-    pub use_websocket: bool,
+    pub endpoint: MqttBrokerEndpoint,
     pub client_id: String,
     pub timeout: Duration,
 }
@@ -525,6 +523,20 @@ pub fn receive_delta_once_via_mqtt(
     runtime.block_on(receive_delta_once_via_mqtt_async(config, project_id))
 }
 
+pub fn subscribe_deltas_via_mqtt<F>(
+    config: &MqttConnectionConfig,
+    project_id: &str,
+    mut on_delta: F,
+) -> Result<(), RuntimeClientError>
+where
+    F: FnMut(RuntimeDeltaMessage),
+{
+    let runtime = Runtime::new().map_err(|error| RuntimeClientError::Runtime(error.to_string()))?;
+    runtime.block_on(async move {
+        subscribe_deltas_via_mqtt_async(config, project_id, &mut on_delta).await
+    })
+}
+
 pub fn publish_delta_via_mqtt(
     config: &MqttConnectionConfig,
     delta: &RuntimeTagValue,
@@ -569,6 +581,39 @@ async fn receive_delta_once_via_mqtt_async(
     }
 }
 
+async fn subscribe_deltas_via_mqtt_async<F>(
+    config: &MqttConnectionConfig,
+    project_id: &str,
+    on_delta: &mut F,
+) -> Result<(), RuntimeClientError>
+where
+    F: FnMut(RuntimeDeltaMessage),
+{
+    let mut options = mqtt_options(config);
+    options.set_keep_alive(Duration::from_secs(5));
+    let (client, mut eventloop) = AsyncClient::new(options, 16);
+    client
+        .subscribe(mqtt_tag_value_topic_filter(project_id), QoS::AtMostOnce)
+        .await
+        .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+
+    loop {
+        let event = time::timeout(config.timeout, eventloop.poll())
+            .await
+            .map_err(|_| {
+                RuntimeClientError::MqttDelta("timed out while waiting for delta".to_string())
+            })?
+            .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+
+        if let Event::Incoming(Packet::Publish(publish)) = event {
+            let payload = String::from_utf8(publish.payload.to_vec())
+                .map_err(|error| RuntimeClientError::MqttDelta(error.to_string()))?;
+            let delta = parse_tag_value_delta(project_id, &publish.topic, &payload)?;
+            on_delta(delta);
+        }
+    }
+}
+
 async fn publish_delta_via_mqtt_async(
     config: &MqttConnectionConfig,
     delta: &RuntimeTagValue,
@@ -598,13 +643,12 @@ async fn publish_delta_via_mqtt_async(
 }
 
 fn mqtt_options(config: &MqttConnectionConfig) -> MqttOptions {
-    let host = if config.use_websocket && !config.host.starts_with("ws://") {
-        format!("ws://{}:{}/mqtt", config.host, config.port)
-    } else {
-        config.host.clone()
+    let host = match config.endpoint.transport {
+        MqttBrokerTransport::Tcp => config.endpoint.host.clone(),
+        MqttBrokerTransport::WebSocket => config.endpoint.websocket_url(),
     };
-    let mut options = MqttOptions::new(&config.client_id, host, config.port);
-    if config.use_websocket {
+    let mut options = MqttOptions::new(&config.client_id, host, config.endpoint.port);
+    if config.endpoint.transport == MqttBrokerTransport::WebSocket {
         options.set_transport(Transport::ws());
     }
     options

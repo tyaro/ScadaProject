@@ -173,6 +173,7 @@ name = "driver-manager"
 version = "0.1.0"
 dependencies = [
  "scada-core",
+ "serde_json",
 ]
 
 [[package]]
@@ -627,6 +628,9 @@ dependencies = [
 [[package]]
 name = "scada-core"
 version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "schannel"
@@ -780,7 +784,10 @@ version = "0.1.0"
 dependencies = [
  "driver-manager",
  "mock-driver",
+ "rumqttc",
  "scada-core",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -788,6 +795,8 @@ name = "tauri-shell"
 version = "0.1.0"
 dependencies = [
  "scada-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

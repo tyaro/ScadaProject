@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
@@ -17,8 +18,12 @@ pub struct ServiceHealthResult {
 pub struct ServiceStartPlan {
     pub service: String,
     pub binary_path: PathBuf,
-    pub bind_host_env: (&'static str, String),
-    pub token_env: (&'static str, String),
+    pub args: Vec<String>,
+    pub envs: Vec<(String, String)>,
+    pub restart_on_exit: bool,
+    pub restart_max_attempts: Option<u32>,
+    pub restart_backoff_ms: Option<u64>,
+    pub restart_reset_after_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,16 +124,26 @@ pub fn service_start_plan(bin_dir: &Path, config: &LocalRuntimeConfig) -> Vec<Se
         .map(|service| ServiceStartPlan {
             service: service.role.as_str().to_string(),
             binary_path: service_binary_path(bin_dir, service),
-            bind_host_env: (LOCAL_BIND_HOST_ENV, config.bind_host.clone()),
-            token_env: (LOCAL_TOKEN_ENV, config.startup_token.clone()),
+            args: Vec::new(),
+            envs: vec![
+                (LOCAL_BIND_HOST_ENV.to_string(), config.bind_host.clone()),
+                (LOCAL_TOKEN_ENV.to_string(), config.startup_token.clone()),
+            ],
+            restart_on_exit: true,
+            restart_max_attempts: None,
+            restart_backoff_ms: None,
+            restart_reset_after_ms: None,
         })
         .collect()
 }
 
 pub fn spawn_service(plan: &ServiceStartPlan) -> Result<SupervisedChild, String> {
-    let child = Command::new(&plan.binary_path)
-        .env(plan.bind_host_env.0, &plan.bind_host_env.1)
-        .env(plan.token_env.0, &plan.token_env.1)
+    let mut command = Command::new(&plan.binary_path);
+    command.args(&plan.args);
+    for (key, value) in &plan.envs {
+        command.env(key, value);
+    }
+    let child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -142,13 +157,24 @@ pub fn spawn_service(plan: &ServiceStartPlan) -> Result<SupervisedChild, String>
 
 pub fn poll_child_status(child: &mut SupervisedChild) -> SupervisedServiceStatus {
     match child.child.try_wait() {
-        Ok(Some(status)) => SupervisedServiceStatus {
-            service: child.service.clone(),
-            started: true,
-            exited: true,
-            exit_code: status.code(),
-            message: "process exited".to_string(),
-        },
+        Ok(Some(status)) => {
+            let stderr = collect_stderr(child).unwrap_or_default();
+            let stdout = collect_stdout(child).unwrap_or_default();
+            let message = if !stderr.is_empty() {
+                format!("process exited stderr={}", truncate_for_log(&stderr, 240))
+            } else if !stdout.is_empty() {
+                format!("process exited stdout={}", truncate_for_log(&stdout, 240))
+            } else {
+                "process exited".to_string()
+            };
+            SupervisedServiceStatus {
+                service: child.service.clone(),
+                started: true,
+                exited: true,
+                exit_code: status.code(),
+                message,
+            }
+        }
         Ok(None) => SupervisedServiceStatus {
             service: child.service.clone(),
             started: true,
@@ -164,6 +190,35 @@ pub fn poll_child_status(child: &mut SupervisedChild) -> SupervisedServiceStatus
             message: error.to_string(),
         },
     }
+}
+
+fn collect_stderr(child: &mut SupervisedChild) -> Result<String, std::io::Error> {
+    let Some(stderr) = child.child.stderr.as_mut() else {
+        return Ok(String::new());
+    };
+
+    let mut buf = String::new();
+    stderr.read_to_string(&mut buf)?;
+    Ok(buf.trim().to_string())
+}
+
+fn collect_stdout(child: &mut SupervisedChild) -> Result<String, std::io::Error> {
+    let Some(stdout) = child.child.stdout.as_mut() else {
+        return Ok(String::new());
+    };
+
+    let mut buf = String::new();
+    stdout.read_to_string(&mut buf)?;
+    Ok(buf.trim().to_string())
+}
+
+fn truncate_for_log(input: &str, max_chars: usize) -> String {
+    if input.chars().count() <= max_chars {
+        return input.to_string();
+    }
+
+    let truncated: String = input.chars().take(max_chars).collect();
+    format!("{truncated}...")
 }
 
 pub fn supervise_once(bin_dir: &Path, config: &LocalRuntimeConfig) -> Vec<SupervisedServiceStatus> {
@@ -249,13 +304,26 @@ mod tests {
         let plan = service_start_plan(Path::new("/tmp/scada"), &config);
 
         assert_eq!(1, plan.len());
+        assert!(plan[0].args.is_empty());
+        assert!(plan[0].restart_on_exit);
+        assert_eq!(None, plan[0].restart_max_attempts);
+        assert_eq!(None, plan[0].restart_backoff_ms);
+        assert_eq!(None, plan[0].restart_reset_after_ms);
         assert_eq!(
-            (LOCAL_BIND_HOST_ENV, "127.0.0.1".to_string()),
-            plan[0].bind_host_env
+            Some("127.0.0.1".to_string()),
+            plan[0]
+                .envs
+                .iter()
+                .find(|(key, _)| key == LOCAL_BIND_HOST_ENV)
+                .map(|(_, value)| value.clone())
         );
         assert_eq!(
-            (LOCAL_TOKEN_ENV, "secret-token".to_string()),
-            plan[0].token_env
+            Some("secret-token".to_string()),
+            plan[0]
+                .envs
+                .iter()
+                .find(|(key, _)| key == LOCAL_TOKEN_ENV)
+                .map(|(_, value)| value.clone())
         );
     }
 

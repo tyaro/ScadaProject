@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::time::Duration;
 
+use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
 use scada_core::command::{ControlCommand, ControlCommandStatus};
 use scada_core::driver::DriverWriteRequest;
-use scada_core::tag::{QualityCode, TagValue, TagValueData};
+use scada_core::mqtt::{tag_value_topic, MqttBrokerEndpoint, MqttBrokerTransport};
+use scada_core::tag::{
+    tag_value_from_json_value, tag_value_to_json, QualityCode, TagValue, TagValueData,
+};
+use tokio::runtime::Runtime;
 
 #[derive(Debug, Default)]
 pub struct InMemoryTagCache {
@@ -37,6 +43,14 @@ pub struct TagServerApi {
     cache: InMemoryTagCache,
     write_policy: WritePolicy,
     required_token: Option<String>,
+    mqtt: Option<MqttPublishConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MqttPublishConfig {
+    pub endpoint: MqttBrokerEndpoint,
+    pub client_id: String,
+    pub timeout: Duration,
 }
 
 impl WritePolicy {
@@ -170,6 +184,7 @@ impl TagServerApi {
             cache,
             write_policy,
             required_token: None,
+            mqtt: None,
         }
     }
 
@@ -192,6 +207,11 @@ impl TagServerApi {
         self
     }
 
+    pub fn with_mqtt_publish(mut self, mqtt: Option<MqttPublishConfig>) -> Self {
+        self.mqtt = mqtt;
+        self
+    }
+
     pub fn handle(&mut self, request: &HttpRequest) -> HttpResponse {
         if request.method == "GET" && request.path_without_query() == "/health" {
             return HttpResponse::json(
@@ -206,6 +226,7 @@ impl TagServerApi {
 
         match (request.method.as_str(), request.path_without_query()) {
             ("POST", "/api/v1/tags/snapshot") => self.handle_snapshot(&request.body),
+            ("POST", "/api/v1/driver-values") => self.handle_driver_values(&request.body),
             ("POST", "/api/v1/control-commands") => self.handle_control_command(&request.body),
             _ => HttpResponse::json(404, error_json("not found")),
         }
@@ -245,6 +266,58 @@ impl TagServerApi {
                 r#"{{"values":[{}],"missing_tag_ids":[{}]}}"#,
                 values.join(","),
                 missing.join(",")
+            ),
+        )
+    }
+
+    fn handle_driver_values(&mut self, body: &str) -> HttpResponse {
+        let driver_values = match parse_driver_values_body(body) {
+            Ok(values) => values,
+            Err(error) => return HttpResponse::json(400, error_json(&error)),
+        };
+        let received = driver_values.values.len();
+        let mut ingested = 0usize;
+        let mut stale = 0usize;
+        let mut published = 0usize;
+        let mut publish_errors = Vec::new();
+
+        for value in driver_values.values {
+            if self.cache.ingest(value.clone()) {
+                ingested += 1;
+                if let Some(mqtt) = &self.mqtt {
+                    match publish_tag_value_via_mqtt(mqtt, &driver_values.project_id, &value) {
+                        Ok(()) => published += 1,
+                        Err(error) => publish_errors.push(error),
+                    }
+                }
+            } else {
+                stale += 1;
+            }
+        }
+
+        if !publish_errors.is_empty() {
+            return HttpResponse::json(
+                502,
+                format!(
+                    r#"{{"received":{},"ingested":{},"stale":{},"published":{},"publish_errors":[{}]}}"#,
+                    received,
+                    ingested,
+                    stale,
+                    published,
+                    publish_errors
+                        .iter()
+                        .map(|error| json_string(error))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ),
+            );
+        }
+
+        HttpResponse::json(
+            202,
+            format!(
+                r#"{{"received":{},"ingested":{},"stale":{},"published":{}}}"#,
+                received, ingested, stale, published
             ),
         )
     }
@@ -356,6 +429,96 @@ pub fn parse_http_request(raw: &str) -> Result<HttpRequest, String> {
     Ok(request)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct DriverValuesBody {
+    project_id: String,
+    values: Vec<TagValue>,
+}
+
+fn parse_driver_values_body(body: &str) -> Result<DriverValuesBody, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(body).map_err(|error| format!("invalid JSON body: {error}"))?;
+    let project_id = root
+        .get("project_id")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "missing or invalid project_id".to_string())?;
+    let values = root
+        .get("values")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| "missing or invalid values".to_string())?;
+
+    let values = values
+        .iter()
+        .map(tag_value_from_json_value)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(DriverValuesBody {
+        project_id: project_id.to_string(),
+        values,
+    })
+}
+
+pub fn publish_tag_value_via_mqtt(
+    config: &MqttPublishConfig,
+    project_id: &str,
+    value: &TagValue,
+) -> Result<(), String> {
+    let runtime = Runtime::new().map_err(|error| error.to_string())?;
+    runtime.block_on(publish_tag_value_via_mqtt_async(config, project_id, value))
+}
+
+async fn publish_tag_value_via_mqtt_async(
+    config: &MqttPublishConfig,
+    project_id: &str,
+    value: &TagValue,
+) -> Result<(), String> {
+    let mut options = mqtt_options(config);
+    options.set_keep_alive(Duration::from_secs(5));
+    let (client, mut eventloop) = AsyncClient::new(options, 8);
+    client
+        .publish(
+            tag_value_topic(project_id, &value.tag_id),
+            QoS::AtLeastOnce,
+            false,
+            tag_value_to_json(value),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let deadline = tokio::time::Instant::now() + config.timeout;
+    loop {
+        let remaining = deadline
+            .checked_duration_since(tokio::time::Instant::now())
+            .ok_or_else(|| "timed out while waiting for mqtt publish ack".to_string())?;
+        let event = tokio::time::timeout(remaining, eventloop.poll())
+            .await
+            .map_err(|_| "timed out while waiting for mqtt publish ack".to_string())?
+            .map_err(|error| error.to_string())?;
+        if matches!(event, Event::Incoming(Packet::PubAck(_))) {
+            break;
+        }
+    }
+    client
+        .disconnect()
+        .await
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn mqtt_options(config: &MqttPublishConfig) -> MqttOptions {
+    let host = match config.endpoint.transport {
+        MqttBrokerTransport::Tcp => config.endpoint.host.clone(),
+        MqttBrokerTransport::WebSocket => config.endpoint.websocket_url(),
+    };
+    let mut options = MqttOptions::new(&config.client_id, host, config.endpoint.port);
+    if config.endpoint.transport == MqttBrokerTransport::WebSocket {
+        options.set_transport(Transport::ws());
+    }
+    options
+}
+
 fn handle_stream(stream: &mut TcpStream, api: &mut TagServerApi) -> std::io::Result<()> {
     let request = match read_http_request(stream) {
         Ok(request) => request,
@@ -444,6 +607,7 @@ fn status_reason(status_code: u16) -> &'static str {
         401 => "Unauthorized",
         404 => "Not Found",
         409 => "Conflict",
+        502 => "Bad Gateway",
         _ => "OK",
     }
 }
@@ -455,42 +619,13 @@ fn phase0_tag_value(tag_id: &str, value: TagValueData) -> TagValue {
         quality: QualityCode::Simulated,
         source_timestamp: "1970-01-01T00:00:00Z".to_string(),
         server_timestamp: "1970-01-01T00:00:00Z".to_string(),
-        sequence: 1,
+        sequence: 0,
         scan_interval_ms: 1000,
         stale_after_ms: 3000,
         driver_id: "mock-driver".to_string(),
         endpoint_id: "mock-endpoint".to_string(),
         read_status: "ok".to_string(),
         write_status: "idle".to_string(),
-    }
-}
-
-fn tag_value_to_json(value: &TagValue) -> String {
-    format!(
-        r#"{{"tag_id":{},"value":{},"data_type":{},"quality":{},"source_timestamp":{},"server_timestamp":{},"sequence":{},"scan_interval_ms":{},"stale_after_ms":{},"driver_id":{},"endpoint_id":{},"read_status":{},"write_status":{}}}"#,
-        json_string(&value.tag_id),
-        tag_value_data_to_json(&value.value),
-        json_string(value.value.data_type().as_str()),
-        json_string(value.quality.as_str()),
-        json_string(&value.source_timestamp),
-        json_string(&value.server_timestamp),
-        value.sequence,
-        value.scan_interval_ms,
-        value.stale_after_ms,
-        json_string(&value.driver_id),
-        json_string(&value.endpoint_id),
-        json_string(&value.read_status),
-        json_string(&value.write_status),
-    )
-}
-
-fn tag_value_data_to_json(value: &TagValueData) -> String {
-    match value {
-        TagValueData::Boolean(value) => value.to_string(),
-        TagValueData::Integer(value) => value.to_string(),
-        TagValueData::Float(value) if value.is_finite() => value.to_string(),
-        TagValueData::Float(_) => "null".to_string(),
-        TagValueData::String(value) => json_string(value),
     }
 }
 
@@ -763,6 +898,31 @@ mod tests {
         assert_eq!(202, response.status_code);
         assert!(response.body.contains(r#""status":"Validated""#));
         assert!(response.body.contains(r#""driver_request""#));
+    }
+
+    #[test]
+    fn driver_values_endpoint_updates_snapshot_cache() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new(
+            "POST",
+            "/api/v1/driver-values",
+            r#"{"project_id":"demo","values":[{"tag_id":"mock.temperature.001","value":29.0,"data_type":"float","quality":"Simulated","source_timestamp":"1970-01-01T00:00:02Z","server_timestamp":"1970-01-01T00:00:02Z","sequence":2,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}]}"#,
+        );
+
+        let ingest_response = api.handle(&request);
+
+        assert_eq!(202, ingest_response.status_code);
+        assert!(ingest_response.body.contains(r#""ingested":1"#));
+
+        let snapshot_response = api.handle(&HttpRequest::new(
+            "POST",
+            "/api/v1/tags/snapshot",
+            r#"{"project_id":"demo","tag_ids":["mock.temperature.001"]}"#,
+        ));
+
+        assert_eq!(200, snapshot_response.status_code);
+        assert!(snapshot_response.body.contains(r#""value":29.0"#));
+        assert!(snapshot_response.body.contains(r#""sequence":2"#));
     }
 
     #[test]

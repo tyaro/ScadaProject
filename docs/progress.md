@@ -1,5 +1,7 @@
 # 開発進行状況
 
+> 運用ルール: 進捗の正本はこの `docs/progress.md` とし、`docs/handoff.md` は再開手順のみを扱う。
+
 ## 現在のフェーズ
 
 フェーズ0: Mock通信基盤
@@ -47,8 +49,28 @@
 - Tag Serverの最小REST API実装
   - `GET /health`
   - `POST /api/v1/tags/snapshot`
+  - `POST /api/v1/driver-values`
   - `POST /api/v1/control-commands`
   - 起動時トークンによるローカルAPI認証
+- Driver ManagerからTag ServerへのMock値投入境界実装（最小版）
+  - `mock-driver --emit-once` がRaw Driver ValueをJSON Linesで出力
+  - `driver-manager --run-mock-cycle` がMock Driver子プロセスを起動し、Raw Driver Valueを正規化
+  - `driver-manager --run-mock-loop` でMock Driver子プロセス起動とTag Server投入を周期実行
+  - 周期投入中はDriver Manager側の `ValueNormalizer` を維持し、sequenceを単調増加
+  - Driver Managerが `POST /api/v1/driver-values` でTag Server最新値キャッシュへ投入
+  - Tag Serverのphase0初期seed sequenceを0にし、初回Mock投入がstale扱いにならないよう調整
+  - `contracts/openapi/runtime.yaml` に `POST /api/v1/driver-values` を追加
+- Tag ServerのMQTT publish統合（最小版）
+  - `tag-server --serve --mqtt-url <url>` でBroker接続先を指定
+  - `POST /api/v1/driver-values` で実際にcache更新されたTagValueのみMQTT publish
+  - publishはQoS1でPUBACKまでpollし、未flushのまま成功扱いにしない
+  - `POST /api/v1/driver-values` レスポンスに `published` を追加
+- Tauri Shell service-configのMock周期投入対応
+  - `config/tauri-shell.services.json` の `tag-server` に `--serve --mqtt-url ws://127.0.0.1:8083/mqtt` を設定
+  - `config/tauri-shell.services.mosquitto.json` の `tag-server` に `--serve --mqtt-url mqtt://127.0.0.1:1883` を設定
+  - 両configの `driver-manager` に `--run-mock-loop` とMock Driver/Tag Server接続引数を設定
+  - Driver Managerに `--startup-delay-ms` を追加し、Broker起動前publishのレースを回避
+  - 現時点でスケルトン終了する `builder-api` / `preview-runtime` / `mock-driver` はconfig上で再起動対象外に設定
 - Preview Runtimeのsnapshot取得境界実装
   - `serde` / `serde_json` による型付きsnapshot DTO
   - Tag Server REST API向け最小HTTPクライアント
@@ -71,18 +93,107 @@
   - `preview-runtime --mqtt-publish-delta`
   - topic/payload検証を既存delta適用ロジックへ統合
   - `aws-lc-sys` を含むRustls default + WebSocket feature構成で検証
+- Preview Runtimeの `REST snapshot + MQTT delta` 常時追従統合（最小版）
+  - `preview-runtime --snapshot-screen --mqtt-subscribe`
+  - snapshot取得後にMQTTを継続購読し、deltaを投影へ反映
+  - 受信エラー/切断時はREST snapshotを再取得して再同期し、その後購読へ復帰
+  - `subscribe_deltas_via_mqtt` により単一接続での連続受信に対応
+  - 受信エラー後の再接続試行に固定バックオフ（1秒）を追加
+- Preview RuntimeのMQTT再接続バックオフ改善
+  - `--mqtt-subscribe` の再接続待機を指数バックオフ化
+  - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
+- Preview RuntimeのMQTT監視ログ改善
+  - `--mqtt-subscribe` の既定ログを要約化（projection先頭行のみ）
+  - `--verbose-projection` 指定時は従来の詳細projectionログを出力
+- Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
+  - `--include-rumqttd` で起動計画に `rumqttd` を追加
+  - `--rumqttd-config` / `--rumqttd-bin` で設定ファイルと実行ファイルを指定可能
+  - `--print-service-plan` と `--supervise-once` で `rumqttd` 統合を確認
+- Tauri Shellのサービス起動引数を設定ファイル化
+  - `--service-config <path>` でJSON設定を読込み
+  - サービスごとに `binary_path` / `args` / `envs` を上書き可能
+  - 未登録サービスは設定ファイルから追加可能（例: `rumqttd`）
+  - 既存の `--include-rumqttd` / `--rumqttd-config` / `--rumqttd-bin` は互換維持
+- `service-config` のJSON Schema追加
+  - `contracts/schemas/tauri-shell-service-config.schema.json` を追加
+  - `config/tauri-shell.services.json` に `schema_version` を追加
+- `service-config` 読み込み時のバージョン検証追加
+  - `schema_version` が `1.0.0` 以外の場合は起動前にエラー終了
+  - エラーメッセージに入力値と期待値を表示
+- Tauri Shellの `supervise-once` 診断ログ改善
+  - 起動後に終了したプロセスの `stderr` をステータスメッセージへ取り込み
+  - `stderr` が空の場合は `stdout` を補助表示
+  - `rumqttd` 設定不備時に終了理由が表示されることを確認
+- Tauri Shellの常駐監視向けループモード追加（最小版）
+  - `--supervise-loop` を追加
+  - `--supervise-interval-ms` で監視間隔を指定
+  - `--supervise-cycles` で有限回監視（`0` は無限）
+  - `--service-config` / `--include-rumqttd` と併用可能
+- Tauri Shellの監視ループに自動再起動ポリシー追加（最小版）
+  - `--restart-exited` 指定で終了プロセスを次サイクルで再spawn
+  - 再起動成功/失敗を監視ログへ出力
+- `service-config` による再起動対象制御追加
+  - サービスごとに `restart_on_exit` を指定可能
+  - `--restart-exited` 有効時も `restart_on_exit=false` のサービスは再spawnしない
+  - 未指定時は後方互換のため `true` 扱い
+- 監視ループのフラップ抑制（最小版）
+  - `--restart-max-attempts` で再起動回数上限を指定（`0` は無制限）
+  - `--restart-backoff-ms` で再起動前待機を指定
+  - 上限到達後は `restart attempts exhausted` を出力して再起動停止
+- `tauri-shell` 監視ループの終了コード方針追加
+  - `--supervise-fail-on-start-error` 指定時、起動失敗を検出すると非0終了
+  - `--supervise-fail-on-exhausted-restart` 指定時、再起動試行枯渇を検出すると非0終了
+- `tauri-shell` 監視ループのログ粒度切替追加
+  - 既定はサイクル要約ログ（`summary running/exited/restarted/...`）を出力
+  - `--supervise-verbose` 指定時はサービスごとの詳細ログを出力
+- `tauri-shell` 監視ループのイベントコード出力追加
+  - 要約ログに `events=` を追加（`START_ERROR`, `RESTARTED`, `RESTART_EXHAUSTED`, `RESTART_FAILED`, `RESTART_RESET`, `NONE`）
+- `tauri-shell` 監視ループの終了要約追加
+  - 終了時に `final_summary` 1行を出力（全サイクル集計 + fail判定フラグ + events）
+- `tauri-shell` 監視ループのJSON要約出力追加
+  - `--supervise-summary-json` 指定時に `cycle_summary` / `final_summary` をJSON行で出力
+- `tauri-shell` CLIヘルプ整備
+  - `--help` / `-h` で supervisor系オプション説明を表示
+- 再起動回数カウンタのリセット条件追加（最小版）
+  - `--restart-reset-after-ms` で安定稼働時間しきい値を指定
+  - しきい値以上連続稼働したサービスは再起動attemptsを0へリセット
+- サービス別再起動ポリシー上書き対応
+  - `service-config` で `restart_max_attempts` / `restart_backoff_ms` / `restart_reset_after_ms` を指定可能
+  - サービス別設定はCLI既定値より優先
+- `rumqttd` をローカルBrokerとして採用
+  - `cargo install rumqttd` で導入
+  - `config/rumqttd.toml` を追加（`127.0.0.1` bind）
+  - `--snapshot-screen --mqtt-subscribe` と `--mqtt-publish-delta` の縦断確認に成功
+  - WebSocket経路（`--mqtt-websocket`, `127.0.0.1:8083`）の縦断確認に成功
 - Xcodeライセンス承諾後の `cargo test` 成功
+- フェーズ0 supervisor運用資料の仕上げ
+  - `docs/phase0_implementation_notes.md` にRunbook、JSON要約ログ例、jqパーサ例、監視アラート条件、CLI/docs同期ルールを整理
+  - `docs/handoff.md` を再開手順中心に圧縮し、進捗詳細は `docs/progress.md` へ集約
+- 次セッション再開確認
+  - 未コミット差分が多い状態を確認済み
+  - `docs/handoff.md` と `docs/progress.md` を読み、次作業をフェーズ0完了条件棚卸しへ移行
 
 ## 現在作業中
 
-- Preview RuntimeのMQTT受信ループ統合
-- 再接続時のsnapshot再同期ルール整理
+- Driver ManagerのMock周期投入とTag Server MQTT publish統合
 
 ## 次に行うこと
 
-1. rumqtt受信ループを `--snapshot-screen` フローへ統合する。
-2. 再接続時にREST snapshotで再同期し、その後delta購読へ復帰する。
-3. 外部Broker対応に向けた接続設定抽象を整理する。
+1. REST API経由のMock書き込み要求を `Runtime -> Tag Server -> Driver Manager -> Mock Driver` の境界で追跡できるようにする。
+2. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
+3. フェーズ0完了条件を再棚卸しし、フェーズ1着手条件を更新する。
+
+## フェーズ0完了条件棚卸し
+
+| 完了条件 | 状態 | メモ |
+| --- | --- | --- |
+| Tauri Shellから全ローカルサービスを起動、停止できる | 一部完了 | `--supervise-once` / `--supervise-loop` で子プロセス起動・停止は実装済み。実サービスの長時間常駐前提の確認は継続。 |
+| Mock Driverが周期的にタグ値を生成できる | 完了 | `driver-manager --run-mock-loop` でMock Driverを周期起動し、Tag Serverへ継続投入できる。 |
+| Driver ManagerがMock Driverを起動、監視できる | 一部完了 | `--run-mock-loop` でMock Driver子プロセスを周期起動できる。常駐監視、再起動、ログ収集は未完。 |
+| Tag ServerがMock値を受け取り、最新値と品質を保持できる | 完了 | `POST /api/v1/driver-values` でDriver Managerからの値投入、snapshot反映、MQTT publishを確認済み。 |
+| MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
+| REST APIでMock Driverへの書き込み要求を送れる | 一部完了 | Tag Server RESTとMock書き込み純粋ロジックは実装済み。Runtime/Driver Manager境界を通す縦断は未完。 |
+| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログは実装済み。サービス別ログ永続化やUI表示は後続。 |
 
 ## 最新検証
 
@@ -106,6 +217,123 @@
 - `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --simulate-delta`: 成功
 - `cargo test` (rumqtt追加後): 成功
 - `cargo test` (`rumqttc` default Rustls + `websocket`, `aws-lc-sys` あり): 成功
+- `cargo test -p preview-runtime` (`--mqtt-subscribe` 連続購読実装後): 成功
+- `target/debug/preview-runtime --snapshot-screen ... --mqtt-subscribe`（Broker未起動環境）:
+  - MQTT接続失敗を検出
+  - REST snapshot再取得による再同期を確認
+  - 固定バックオフ付きで再試行継続を確認
+- `cargo install rumqttd`: 成功
+- `rumqttd -c config/rumqttd.toml -q`: 起動成功
+- `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --mqtt-subscribe --mqtt-host 127.0.0.1 --mqtt-port 1883`: 成功
+- `target/debug/preview-runtime --mqtt-publish-delta --project-id demo --mqtt-host 127.0.0.1 --mqtt-port 1883 --delta-payload ...`: 成功
+- 購読側で `delta tag=mock.running.001 matched=1 applied=1 stale=0 affected=pump-001` を確認
+- `target/debug/preview-runtime --snapshot-screen --screen config/screens/mock-main.screen.json --tag-server http://127.0.0.1:18080 --mqtt-subscribe --mqtt-websocket --mqtt-host 127.0.0.1 --mqtt-port 8083`: 成功
+- `target/debug/preview-runtime --mqtt-publish-delta --project-id demo --mqtt-websocket --mqtt-host 127.0.0.1 --mqtt-port 8083 --delta-payload ...`: 成功
+- WebSocket購読側で `delta tag=mock.temperature.001 matched=2 applied=2 stale=0 affected=pump-001,label-001` を確認
+- `cargo test -p preview-runtime`（指数バックオフ実装後）: 成功
+- `cargo test -p tauri-shell`: 成功
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --include-rumqttd --rumqttd-config config/rumqttd.toml`: 成功
+- `target/debug/tauri-shell --supervise-once --bin-dir target/debug --include-rumqttd --rumqttd-config config/rumqttd.toml`: 成功
+- `cargo test -p preview-runtime`（監視ログ要約化実装後）: 成功
+- `cargo test -p tauri-shell`（診断ログ改善後）: 成功
+- `target/debug/tauri-shell --supervise-once --bin-dir target/debug --include-rumqttd --rumqttd-config config/rumqttd-missing.toml`: 成功
+  - `rumqttd` の終了理由（設定ファイル未検出）をstderr抜粋で表示
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
+- `target/debug/tauri-shell --supervise-once --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config /private/tmp/tauri-shell.services.bad.json`: 失敗（想定どおり）
+  - `unsupported schema_version 2.0.0 ... (expected 1.0.0)` を確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 2`: 成功
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
+  - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
+  - `restart_on_exit=false` の `builder-api` が再spawnされないことを確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 5 --restart-exited --restart-max-attempts 1 --restart-backoff-ms 50`: 成功
+  - 1回再起動後に `restart attempts exhausted (1)` で再起動停止を確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 4 --restart-exited --restart-max-attempts 2 --restart-backoff-ms 50 --restart-reset-after-ms 500`: 成功
+  - `restart-reset-after-ms` を含む運転が成立することを確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.per-service-restart.json --supervise-interval-ms 200 --supervise-cycles 4 --restart-exited --restart-max-attempts 3 --restart-backoff-ms 100 --restart-reset-after-ms 5000`: 成功
+  - `tag-server` のみ `restart_max_attempts=1` が適用され、他サービスはCLI既定値で再起動継続することを確認
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.reset-proof2.json --supervise-interval-ms 200 --supervise-cycles 8 --restart-exited`: 成功
+  - `flap-test` で `restart=true attempts=1` の後、`restart-reset=true` 発火を確認
+- `cargo test -p tauri-shell --test supervise_loop_reset`: 成功
+  - `--supervise-fail-on-exhausted-restart` 指定時に非0終了となることを確認
+- `cargo test -p tauri-shell`: 成功
+  - `supervise-loop` の要約ログ運用へ移行後も既存テストが通ることを確認
+- `cargo test -p tauri-shell`（`--help` 追加後）: 成功
+  - supervisor系オプション追加後も全テストが通ることを確認
+- `brew install mosquitto`: 成功（`mosquitto 2.1.2`）
+- `preview-runtime --mqtt-receive-once` + `--mqtt-publish-delta`（`--mqtt-host 127.0.0.1 --mqtt-port 1883`）: 成功
+  - `mqtt received topic=scada/demo/tag/mock.running.001/value` を確認
+- `preview-runtime --mqtt-receive-once` + `--mqtt-publish-delta`（`--mqtt-url mqtt://127.0.0.1:1883`）: 成功
+  - `mqtt received topic=scada/demo/tag/mock.temperature.001/value` を確認
+- `tauri-shell --print-service-plan --service-config config/tauri-shell.services.json`: 成功
+  - `preview-runtime args="--mqtt-url ws://127.0.0.1:8083/mqtt"` の自動注入を確認
+- `tauri-shell --supervise-once --service-config config/tauri-shell.services.json`: 成功
+- `tauri-shell --supervise-loop --service-config config/tauri-shell.services.json --supervise-summary-json`: 成功
+  - `cycle_summary` / `final_summary` JSON出力を確認
+- `config/tauri-shell.services.mosquitto.json` 追加
+  - `mqtt_url=mqtt://127.0.0.1:1883`
+  - `mosquitto` を `tauri-shell` 管理サービスとして起動するサンプル設定
+- `service-config` の `mqtt_url` 早期検証追加
+  - `tauri-shell` 読み込み時に `scada-core` の `MqttBrokerEndpoint` parserで検証
+  - 不正な `mqtt_url` は起動計画作成前にエラー化
+- `tauri-shell --print-service-plan --service-config config/tauri-shell.services.mosquitto.json`: 成功
+  - `preview-runtime args="--mqtt-url mqtt://127.0.0.1:1883"` の自動注入を確認
+- `cargo test -p scada-core`: 成功
+- `cargo test -p tauri-shell`: 成功
+  - `mqtt_url` 早期検証テストを含めて成功
+- `tauri-shell --print-service-plan --service-config /private/tmp/tauri-shell.bad-mqtt-url.json`: 失敗（想定どおり）
+  - `invalid mqtt_url ... missing host` を確認
+- `cargo test -p scada-core -p preview-runtime -p tauri-shell`: 成功
+  - 外部Broker接続抽象、`mqtt_url` 早期検証、supervisor JSON要約テストを含めて成功
+- `tauri-shell --supervise-loop --service-config config/tauri-shell.services.mosquitto.json --supervise-summary-json`: 成功
+  - `mosquitto` を `tauri-shell` 管理下で起動
+  - `cycle_summary` / `final_summary` JSON出力を確認
+  - 実行後に1883 listenが残らないことを確認
+- `mosquitto` + `tag-server` + `preview-runtime --snapshot-screen --mqtt-subscribe --mqtt-url mqtt://127.0.0.1:1883`: 成功
+  - 初期 `REST snapshot` 取得を確認
+  - MQTT delta publish後に `delta tag=mock.temperature.001 matched=2 applied=2 stale=0 affected=pump-001,label-001` を確認
+  - 終了後に1883/18080 listenが残らないことを確認
+- `cargo test -p scada-core -p preview-runtime -p tauri-shell`（次セッション再開確認）: 成功
+  - `scada-core`: 10 passed
+  - `preview-runtime`: 9 passed
+  - `tauri-shell`: unit/integration合計14 passed
+  - `supervise_loop_reset` の3テストを含めて成功
+- `cargo test -p scada-core -p tag-server -p driver-manager -p mock-driver`: 成功
+  - `POST /api/v1/driver-values` のTag Serverキャッシュ更新テストを含めて成功
+  - Raw Driver Value / Tag Value JSON round-tripテストを含めて成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18082`: 起動成功
+- `target/debug/driver-manager --run-mock-cycle --mock-driver-bin target/debug/mock-driver --tag-server http://127.0.0.1:18082 --project-id demo`: 成功
+  - `raw_values=2 posted_values=2 tag_server_status=202`
+  - `tag_server_body={"received":2,"ingested":2,"stale":0}` を確認
+- `curl POST http://127.0.0.1:18082/api/v1/tags/snapshot`: 成功
+  - `mock.temperature.001` sequence `1`、`mock.running.001` sequence `2` を確認
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`: 成功
+  - 影響範囲の全テスト成功
+- `cargo test -p driver-manager -p mock-driver -p tag-server`（Mock周期投入追加後）: 成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18083`: 起動成功
+- `target/debug/driver-manager --run-mock-loop --mock-driver-bin target/debug/mock-driver --tag-server http://127.0.0.1:18083 --project-id demo --cycles 2 --interval-ms 50`: 成功
+  - cycle 1/2 とも `raw_values=2 posted_values=2 tag_server_status=202`
+  - cycle 1/2 とも `{"received":2,"ingested":2,"stale":0}` を確認
+- `curl POST http://127.0.0.1:18083/api/v1/tags/snapshot`: 成功
+  - 2サイクル後に `mock.temperature.001` sequence `3`、`mock.running.001` sequence `4` を確認
+- `cargo test -p tag-server -p driver-manager -p mock-driver -p preview-runtime`（Tag Server MQTT publish追加後）: 成功
+- `target/debug/tag-server --serve --addr 127.0.0.1:18084 --mqtt-url mqtt://127.0.0.1:1884`: 起動成功
+- `target/debug/preview-runtime --mqtt-receive-once --project-id demo --mqtt-url mqtt://127.0.0.1:1884`: 成功
+  - `mqtt received topic=scada/demo/tag/mock.temperature.001/value` を確認
+  - `mock.temperature.001 float Simulated 21.0` を確認
+- `target/debug/driver-manager --run-mock-cycle --mock-driver-bin target/debug/mock-driver --tag-server http://127.0.0.1:18084 --project-id demo`: 成功
+  - `tag_server_body={"received":2,"ingested":2,"stale":0,"published":2}` を確認
+- `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.mosquitto.json`: 成功
+  - `tag-server args="--serve --mqtt-url mqtt://127.0.0.1:1883"` を確認
+  - `driver-manager args="--run-mock-loop ..."` を確認
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`: 成功
+  - Tag Server MQTT publish統合後も影響範囲の全テスト成功
+- `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.mosquitto.json --supervise-cycles 4 --supervise-interval-ms 500 --supervise-summary-json --restart-exited`: 成功
+  - `cycle_summary` / `final_summary` JSON出力を確認
+  - `events="NONE"` を確認
+  - `builder-api` / `preview-runtime` / `mock-driver` はスケルトン終了するが、configで再起動対象外のためrestartは発生しない
+  - Tag Server / Driver Manager / Brokerがrunning側に残ることを確認
 
 ## セーブポイント
 
@@ -136,3 +364,4 @@
 - Codexプロセスの既存PATHは起動時のNode 18を保持している場合がある。新規ログインシェルでは `.zprofile` 経由でnvm defaultのNode 24が有効になる。
 - ローカルポートbindとcurl確認はサンドボックス外権限で実施した。
 - 追加クレート取得とローカルTCP縦断確認はサンドボックス外権限で実施した。
+- `mosquitto` と `rumqttd` は導入・検証済み。`emqx` / `mqttx` は未導入。

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scada.local/schemas/tauri-shell-supervise-summary.schema.json",
+  "title": "TauriShellSuperviseSummary",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "cycle_summary" },
+        "cycle": { "type": "integer", "minimum": 0 },
+        "running": { "type": "integer", "minimum": 0 },
+        "exited": { "type": "integer", "minimum": 0 },
+        "restarted": { "type": "integer", "minimum": 0 },
+        "restart_exhausted": { "type": "integer", "minimum": 0 },
+        "restart_failed": { "type": "integer", "minimum": 0 },
+        "restart_reset": { "type": "integer", "minimum": 0 },
+        "startup_errors": { "type": "integer", "minimum": 0 },
+        "events": {
+          "type": "string",
+          "pattern": "^(NONE|[A-Z_]+(,[A-Z_]+)*)$"
+        }
+      },
+      "required": [
+        "type",
+        "cycle",
+        "running",
+        "exited",
+        "restarted",
+        "restart_exhausted",
+        "restart_failed",
+        "restart_reset",
+        "startup_errors",
+        "events"
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "final_summary" },
+        "cycles": { "type": "integer", "minimum": 0 },
+        "running_total": { "type": "integer", "minimum": 0 },
+        "exited_total": { "type": "integer", "minimum": 0 },
+        "restarted_total": { "type": "integer", "minimum": 0 },
+        "restart_exhausted_total": { "type": "integer", "minimum": 0 },
+        "restart_failed_total": { "type": "integer", "minimum": 0 },
+        "restart_reset_total": { "type": "integer", "minimum": 0 },
+        "startup_errors": { "type": "integer", "minimum": 0 },
+        "fail_on_start_error": { "type": "boolean" },
+        "fail_on_exhausted_restart": { "type": "boolean" },
+        "events": {
+          "type": "string",
+          "pattern": "^(NONE|[A-Z_]+(,[A-Z_]+)*)$"
+        }
+      },
+      "required": [
+        "type",
+        "cycles",
+        "running_total",
+        "exited_total",
+        "restarted_total",
+        "restart_exhausted_total",
+        "restart_failed_total",
+        "restart_reset_total",
+        "startup_errors",
+        "fail_on_start_error",
+        "fail_on_exhausted_restart",
+        "events"
+      ]
+    }
+  ]
+}

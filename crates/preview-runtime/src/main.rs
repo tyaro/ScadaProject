@@ -5,9 +5,10 @@ use preview_runtime::{
     apply_delta_to_projection, default_snapshot_tags, format_delta_apply_result,
     format_screen_projection_summary, format_snapshot_summary, load_screen_definition,
     parse_tag_value_delta, project_snapshot_to_screen, publish_delta_via_mqtt,
-    receive_delta_once_via_mqtt, resolve_tag_ids_from_screen, MqttConnectionConfig,
-    RuntimeTagValue, TagServerClient,
+    receive_delta_once_via_mqtt, resolve_tag_ids_from_screen, subscribe_deltas_via_mqtt,
+    MqttConnectionConfig, RuntimeTagValue, TagServerClient,
 };
+use scada_core::mqtt::{MqttBrokerEndpoint, MqttBrokerTransport, DEFAULT_MQTT_TCP_PORT};
 use scada_core::service::{print_health, ServiceRole, LOCAL_TOKEN_ENV};
 
 const TAG_SERVER_URL_ENV: &str = "SCADA_TAG_SERVER_URL";
@@ -112,6 +113,20 @@ fn main() {
                         }
                     }
                 }
+
+                if args.iter().any(|arg| arg == "--mqtt-subscribe") {
+                    let config = mqtt_config_from_args(&args, "preview-runtime-sub");
+                    let verbose_projection = args.iter().any(|arg| arg == "--verbose-projection");
+                    run_snapshot_screen_mqtt_loop(
+                        &client,
+                        &definition,
+                        &definition.project_id,
+                        &tags,
+                        &config,
+                        &mut projection,
+                        verbose_projection,
+                    );
+                }
             }
             Err(error) => {
                 eprintln!("preview-runtime snapshot-screen failed: {error}");
@@ -171,6 +186,63 @@ fn main() {
     println!("preview-runtime skeleton");
 }
 
+fn run_snapshot_screen_mqtt_loop(
+    client: &TagServerClient,
+    definition: &preview_runtime::ScreenDefinition,
+    project_id: &str,
+    tags: &[String],
+    config: &MqttConnectionConfig,
+    projection: &mut preview_runtime::ScreenProjection,
+    verbose_projection: bool,
+) {
+    let mut reconnect_failures: u32 = 0;
+    loop {
+        match subscribe_deltas_via_mqtt(config, project_id, |delta| {
+            let result = apply_delta_to_projection(projection, &delta.value);
+            println!("{}", format_delta_apply_result(&result));
+            print_projection_log(projection, verbose_projection);
+        }) {
+            Ok(()) => {}
+            Err(error) => {
+                reconnect_failures = reconnect_failures.saturating_add(1);
+                let backoff_secs = reconnect_backoff_secs(reconnect_failures);
+                eprintln!("preview-runtime mqtt-subscribe receive failed: {error}");
+                eprintln!("preview-runtime mqtt-subscribe refreshing snapshot");
+                match client.fetch_snapshot(project_id, tags) {
+                    Ok(snapshot) => {
+                        *projection = project_snapshot_to_screen(definition, &snapshot);
+                        println!("{}", format_snapshot_summary(&snapshot));
+                        print_projection_log(projection, verbose_projection);
+                    }
+                    Err(refresh_error) => {
+                        eprintln!(
+                            "preview-runtime mqtt-subscribe snapshot refresh failed: {refresh_error}"
+                        );
+                    }
+                }
+                eprintln!("preview-runtime mqtt-subscribe reconnect backoff={backoff_secs}s");
+                std::thread::sleep(Duration::from_secs(backoff_secs));
+            }
+        }
+    }
+}
+
+fn print_projection_log(projection: &preview_runtime::ScreenProjection, verbose_projection: bool) {
+    let summary = format_screen_projection_summary(projection);
+    if verbose_projection {
+        println!("{summary}");
+        return;
+    }
+
+    let compact = summary.lines().next().unwrap_or("projection unavailable");
+    println!("{compact}");
+}
+
+fn reconnect_backoff_secs(failures: u32) -> u64 {
+    let capped_failures = failures.min(6);
+    (1u64 << (capped_failures - 1)).min(30)
+}
+
 fn arg_value(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
@@ -185,21 +257,41 @@ fn arg_values(args: &[String], name: &str) -> Vec<String> {
 }
 
 fn mqtt_config_from_args(args: &[String], client_prefix: &str) -> MqttConnectionConfig {
-    let host = arg_value(args, "--mqtt-host").unwrap_or_else(|| "127.0.0.1".to_string());
-    let port = arg_value(args, "--mqtt-port")
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(1883);
+    let endpoint = if let Some(url) = arg_value(args, "--mqtt-url") {
+        match MqttBrokerEndpoint::parse(&url) {
+            Ok(endpoint) => endpoint,
+            Err(error) => {
+                eprintln!("preview-runtime mqtt config failed: invalid --mqtt-url: {error}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        let host = arg_value(args, "--mqtt-host").unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = arg_value(args, "--mqtt-port")
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(DEFAULT_MQTT_TCP_PORT);
+        let transport = if args.iter().any(|arg| arg == "--mqtt-websocket") {
+            MqttBrokerTransport::WebSocket
+        } else {
+            MqttBrokerTransport::Tcp
+        };
+        let websocket_path =
+            arg_value(args, "--mqtt-ws-path").unwrap_or_else(|| "/mqtt".to_string());
+        MqttBrokerEndpoint {
+            host,
+            port,
+            transport,
+            websocket_path,
+        }
+    };
     let timeout_secs = arg_value(args, "--mqtt-timeout-secs")
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(5);
     let client_id = arg_value(args, "--mqtt-client-id")
         .unwrap_or_else(|| format!("{client_prefix}-{}", std::process::id()));
-    let use_websocket = args.iter().any(|arg| arg == "--mqtt-websocket");
 
     MqttConnectionConfig {
-        host,
-        port,
-        use_websocket,
+        endpoint,
         client_id,
         timeout: Duration::from_secs(timeout_secs),
     }
