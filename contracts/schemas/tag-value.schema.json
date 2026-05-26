@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scada.local/schemas/tag-value.schema.json",
+  "title": "TagValue",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tag_id": { "type": "string", "minLength": 1 },
+    "value": {},
+    "data_type": {
+      "type": "string",
+      "enum": ["boolean", "integer", "float", "string"]
+    },
+    "quality": {
+      "type": "string",
+      "enum": ["Good", "Uncertain", "Bad", "Stale", "CommLost", "OutOfRange", "Manual", "Simulated"]
+    },
+    "source_timestamp": { "type": "string", "format": "date-time" },
+    "server_timestamp": { "type": "string", "format": "date-time" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "scan_interval_ms": { "type": "integer", "minimum": 1 },
+    "stale_after_ms": { "type": "integer", "minimum": 1 },
+    "driver_id": { "type": "string", "minLength": 1 },
+    "endpoint_id": { "type": "string", "minLength": 1 },
+    "read_status": { "type": "string" },
+    "write_status": { "type": "string" }
+  },
+  "required": [
+    "tag_id",
+    "value",
+    "data_type",
+    "quality",
+    "source_timestamp",
+    "server_timestamp",
+    "sequence",
+    "scan_interval_ms",
+    "stale_after_ms",
+    "driver_id",
+    "endpoint_id",
+    "read_status",
+    "write_status"
+  ]
+}
+

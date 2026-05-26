@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/scada-core",
+    "crates/builder-api",
+    "crates/preview-runtime",
+    "crates/tag-server",
+    "crates/driver-manager",
+    "crates/mock-driver",
+    "crates/tauri-shell",
+]
+

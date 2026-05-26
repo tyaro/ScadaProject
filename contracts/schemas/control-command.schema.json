@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scada.local/schemas/control-command.schema.json",
+  "title": "ControlCommand",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "command_id": { "type": "string", "minLength": 1 },
+    "idempotency_key": { "type": "string", "minLength": 1 },
+    "user_id": { "type": "string", "minLength": 1 },
+    "tag_id": { "type": "string", "minLength": 1 },
+    "requested_value": {},
+    "status": {
+      "type": "string",
+      "enum": [
+        "Requested",
+        "Accepted",
+        "Validated",
+        "Sent",
+        "DriverAck",
+        "DeviceAck",
+        "Verified",
+        "Timeout",
+        "Failed",
+        "Rejected"
+      ]
+    },
+    "requested_at": { "type": "string", "format": "date-time" },
+    "timeout_ms": { "type": "integer", "minimum": 1 }
+  },
+  "required": [
+    "command_id",
+    "idempotency_key",
+    "user_id",
+    "tag_id",
+    "requested_value",
+    "status",
+    "requested_at",
+    "timeout_ms"
+  ]
+}
+

@@ -1,0 +1,55 @@
+openapi: 3.0.3
+info:
+  title: SCADA Runtime API
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Runtime health check
+      responses:
+        "200":
+          description: Runtime is healthy
+  /api/v1/tags/snapshot:
+    post:
+      summary: Fetch latest tag snapshot for a screen or tag list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project_id:
+                  type: string
+                tag_ids:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - project_id
+                - tag_ids
+      responses:
+        "200":
+          description: Latest tag values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  values:
+                    type: array
+                    items:
+                      $ref: "../schemas/tag-value.schema.json"
+  /api/v1/control-commands:
+    post:
+      summary: Request a tag write/control command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "../schemas/control-command.schema.json"
+      responses:
+        "202":
+          description: Control command accepted
+

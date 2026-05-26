@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package scada.v1;
+
+message TagValue {
+  string tag_id = 1;
+  string data_type = 2;
+  string value_json = 3;
+  string quality = 4;
+  string source_timestamp = 5;
+  string server_timestamp = 6;
+  uint64 sequence = 7;
+  uint64 scan_interval_ms = 8;
+  uint64 stale_after_ms = 9;
+  string driver_id = 10;
+  string endpoint_id = 11;
+  string read_status = 12;
+  string write_status = 13;
+}
+
+message TagValueBatch {
+  repeated TagValue values = 1;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string service = 1;
+  string status = 2;
+}
+
+message ControlCommandRequest {
+  string command_id = 1;
+  string idempotency_key = 2;
+  string user_id = 3;
+  string tag_id = 4;
+  string requested_value_json = 5;
+  uint64 timeout_ms = 6;
+}
+
+message ControlCommandResponse {
+  string command_id = 1;
+  string status = 2;
+  string message = 3;
+}
+
+service DriverService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Write(ControlCommandRequest) returns (ControlCommandResponse);
+}
+
+service DriverManagerService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc PublishValues(TagValueBatch) returns (HealthResponse);
+  rpc Write(ControlCommandRequest) returns (ControlCommandResponse);
+}
+
+service TagServerService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc IngestValues(TagValueBatch) returns (HealthResponse);
+  rpc Write(ControlCommandRequest) returns (ControlCommandResponse);
+}
+

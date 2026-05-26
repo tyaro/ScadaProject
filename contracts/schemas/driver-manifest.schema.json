@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://scada.local/schemas/driver-manifest.schema.json",
+  "title": "DriverManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "minLength": 1 },
+    "driver_id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "executable": { "type": "string", "minLength": 1 },
+    "supported_protocols": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "grpc_service": { "type": "string", "minLength": 1 },
+    "permissions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": [
+    "schema_version",
+    "driver_id",
+    "name",
+    "version",
+    "executable",
+    "supported_protocols",
+    "grpc_service",
+    "permissions",
+    "capabilities"
+  ]
+}
+

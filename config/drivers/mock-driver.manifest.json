@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1.0",
+  "driver_id": "mock-driver",
+  "name": "Mock Driver",
+  "version": "0.1.0",
+  "executable": "mock-driver",
+  "supported_protocols": ["mock"],
+  "grpc_service": "scada.v1.DriverService",
+  "permissions": [],
+  "capabilities": ["read", "write", "simulate_quality", "simulate_alarm_threshold"]
+}
+

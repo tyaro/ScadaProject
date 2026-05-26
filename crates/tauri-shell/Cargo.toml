@@ -1,0 +1,8 @@
+[package]
+name = "tauri-shell"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+scada-core = { path = "../scada-core" }
+
