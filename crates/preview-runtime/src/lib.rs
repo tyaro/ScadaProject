@@ -599,13 +599,43 @@ pub fn load_screen_definition(path: &Path) -> Result<ScreenDefinition, RuntimeCl
     })?;
 
     validate_screen_definition(&definition).map_err(|error| {
-        RuntimeClientError::ScreenDefinition(format!("invalid {}: {error}", path.display()))
+        RuntimeClientError::ScreenDefinition(format!(
+            "invalid {}: {}",
+            path.display(),
+            error.to_machine_message()
+        ))
     })?;
 
     Ok(definition)
 }
 
-fn validate_screen_definition(definition: &ScreenDefinition) -> Result<(), String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModifyRuleValidationError {
+    code: &'static str,
+    path: String,
+    detail: String,
+}
+
+impl ModifyRuleValidationError {
+    fn new(code: &'static str, path: &str, detail: String) -> Self {
+        Self {
+            code,
+            path: path.to_string(),
+            detail,
+        }
+    }
+
+    fn to_machine_message(&self) -> String {
+        format!(
+            "code={} path={} detail={}",
+            self.code, self.path, self.detail
+        )
+    }
+}
+
+fn validate_screen_definition(
+    definition: &ScreenDefinition,
+) -> Result<(), ModifyRuleValidationError> {
     for object in &definition.objects {
         for rule in &object.modify_rules {
             if let Some(condition) = &rule.condition {
@@ -620,14 +650,19 @@ fn validate_screen_definition(definition: &ScreenDefinition) -> Result<(), Strin
     Ok(())
 }
 
-fn validate_modify_rule_condition(condition: &ModifyRuleCondition, path: &str) -> Result<(), String> {
+fn validate_modify_rule_condition(
+    condition: &ModifyRuleCondition,
+    path: &str,
+) -> Result<(), ModifyRuleValidationError> {
     let has_op = condition.op.is_some();
     let has_all = !condition.all.is_empty();
     let has_any = !condition.any.is_empty();
 
     if !has_op && !has_all && !has_any {
-        return Err(format!(
-            "{path}: condition requires op, all, or any"
+        return Err(ModifyRuleValidationError::new(
+            "MODIFY_RULE_CONDITION_MISSING_SELECTOR",
+            path,
+            "condition requires op, all, or any".to_string(),
         ));
     }
 
@@ -635,26 +670,46 @@ fn validate_modify_rule_condition(condition: &ModifyRuleCondition, path: &str) -
         match op {
             "eq" | "ne" | "gt" | "gte" | "lt" | "lte" => {
                 if condition.value.is_none() {
-                    return Err(format!("{path}: op '{op}' requires value"));
+                    return Err(ModifyRuleValidationError::new(
+                        "MODIFY_RULE_CONDITION_VALUE_REQUIRED",
+                        path,
+                        format!("op '{op}' requires value"),
+                    ));
                 }
             }
             "between" => match (condition.min, condition.max) {
                 (Some(min), Some(max)) => {
                     if min > max {
-                        return Err(format!("{path}: between requires min <= max"));
+                        return Err(ModifyRuleValidationError::new(
+                            "MODIFY_RULE_CONDITION_BETWEEN_RANGE_INVALID",
+                            path,
+                            "between requires min <= max".to_string(),
+                        ));
                     }
                 }
                 _ => {
-                    return Err(format!("{path}: op 'between' requires min and max"));
+                    return Err(ModifyRuleValidationError::new(
+                        "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX",
+                        path,
+                        "op 'between' requires min and max".to_string(),
+                    ));
                 }
             },
             "in" => {
                 if condition.values.as_ref().map(|values| values.is_empty()).unwrap_or(true) {
-                    return Err(format!("{path}: op 'in' requires non-empty values"));
+                    return Err(ModifyRuleValidationError::new(
+                        "MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES",
+                        path,
+                        "op 'in' requires non-empty values".to_string(),
+                    ));
                 }
             }
             _ => {
-                return Err(format!("{path}: unsupported op '{op}'"));
+                return Err(ModifyRuleValidationError::new(
+                    "MODIFY_RULE_CONDITION_UNSUPPORTED_OP",
+                    path,
+                    format!("unsupported op '{op}'"),
+                ));
             }
         }
     }
@@ -2552,7 +2607,11 @@ mod tests {
         };
 
         let error = validate_modify_rule_condition(&condition, "test").expect_err("invalid");
-        assert!(error.contains("requires min and max"));
+        assert_eq!(
+            "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX",
+            error.code
+        );
+        assert!(error.detail.contains("requires min and max"));
     }
 
     #[test]
@@ -2568,7 +2627,8 @@ mod tests {
         };
 
         let error = validate_modify_rule_condition(&condition, "test").expect_err("invalid");
-        assert!(error.contains("requires non-empty values"));
+        assert_eq!("MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES", error.code);
+        assert!(error.detail.contains("requires non-empty values"));
     }
 
     #[test]
@@ -2592,5 +2652,19 @@ mod tests {
         };
 
         validate_modify_rule_condition(&condition, "test").expect("valid");
+    }
+
+    #[test]
+    fn validation_error_machine_message_contains_code_path_detail() {
+        let error = ModifyRuleValidationError::new(
+            "MODIFY_RULE_CONDITION_VALUE_REQUIRED",
+            "object=pump-001 property=color",
+            "op 'gte' requires value".to_string(),
+        );
+
+        let message = error.to_machine_message();
+        assert!(message.contains("code=MODIFY_RULE_CONDITION_VALUE_REQUIRED"));
+        assert!(message.contains("path=object=pump-001 property=color"));
+        assert!(message.contains("detail=op 'gte' requires value"));
     }
 }
