@@ -265,6 +265,7 @@ Runtime API境界テストを強化
   - Tauri command の返却契約として再利用する `PickScreenRelativePathResult` 型を `tauri-shell` へ追加し、command実装前にテスト可能な境界を先に用意した
   - `tauri-shell` CLI に `--pick-screen-relative-path` を追加し、`--project-root` と `--absolute-path`（または `--cancel`）から `PickScreenRelativePathResult` JSON を返す command 互換経路を実装した
   - src-tauri 未作成の現段階でも、Builder UI が期待する `pick_screen_relative_path` 契約を CLI 経由で検証できる状態にした
+  - `scripts/check_local_ci.sh` に `--pick-screen-relative-path` 契約チェックを追加し、selected/cancelled のJSON形が標準ローカルCI入口で崩れていないか自動検証できるようにした
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -417,6 +418,8 @@ Runtime API境界テストを強化
 - `cargo test -p tauri-shell`: 成功（24 passed, `--pick-screen-relative-path` 追加後）
 - `cargo run -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --absolute-path /tmp/scada-project/config/screens/mock-main.screen.json`: 成功（`{"cancelled":false,"relative_path":"config/screens/mock-main.screen.json"}`）
 - `cargo run -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --cancel`: 成功（`{"cancelled":true,"relative_path":null}`）
+- `bash -n scripts/check_local_ci.sh`: 成功（picker契約チェック追加後）
+- `cargo run -q -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --absolute-path /tmp/scada-project/config/screens/mock-main.screen.json && cargo run -q -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --cancel`: 成功（`check_local_ci.sh` 期待値と一致）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）

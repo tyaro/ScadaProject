@@ -47,6 +47,25 @@ save_as = paths.fetch("/api/v1/screens/save-as")
 raise "missing POST on /api/v1/screens/save-as" unless save_as.key?("post")
 '
 
+echo "== tauri-shell pick-screen-relative-path contract check =="
+selected_json="$(cargo run -q -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --absolute-path /tmp/scada-project/config/screens/mock-main.screen.json)"
+expected_selected='{"cancelled":false,"relative_path":"config/screens/mock-main.screen.json"}'
+if [[ "$selected_json" != "$expected_selected" ]]; then
+  echo "error: unexpected selected response from tauri-shell picker"
+  echo "expected: $expected_selected"
+  echo "actual:   $selected_json"
+  exit 1
+fi
+
+cancelled_json="$(cargo run -q -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --cancel)"
+expected_cancelled='{"cancelled":true,"relative_path":null}'
+if [[ "$cancelled_json" != "$expected_cancelled" ]]; then
+  echo "error: unexpected cancelled response from tauri-shell picker"
+  echo "expected: $expected_cancelled"
+  echo "actual:   $cancelled_json"
+  exit 1
+fi
+
 echo "== runtime-ui check =="
 (
   cd apps/runtime-ui
