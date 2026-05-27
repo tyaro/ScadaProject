@@ -414,6 +414,38 @@ Runtime UIはAPIエラー本文を次の優先順位で解釈する。
 
 この優先順位はE2Eで固定化し、回帰時に表示文言の意図しない変化を検出できるようにする。
 
+### conditionバリデーションのエラーコード契約
+
+`modify_rules.condition` の検証エラーは、Runtime UIとBuilder UIの双方で共通解釈できるよう、次の形式で返す。
+
+- `code=<ERROR_CODE> path=<OBJECT_PATH> detail=<DETAIL_MESSAGE>`
+- 例: `code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max`
+
+#### エラーコード一覧
+
+| code | 意味 | 想定原因 |
+| --- | --- | --- |
+| `MODIFY_RULE_CONDITION_MISSING_SELECTOR` | 条件に `op` / `all` / `any` がない | condition定義の未入力 |
+| `MODIFY_RULE_CONDITION_VALUE_REQUIRED` | 単項比較演算で `value` が不足 | `eq/ne/gt/gte/lt/lte` に値未設定 |
+| `MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX` | `between` に `min` または `max` が不足 | 範囲条件の片側未入力 |
+| `MODIFY_RULE_CONDITION_BETWEEN_RANGE_INVALID` | `between` の `min > max` | 範囲条件の設定逆転 |
+| `MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES` | `in` の `values` が空または未設定 | 候補値リスト未設定 |
+| `MODIFY_RULE_CONDITION_UNSUPPORTED_OP` | 未対応の `op` が指定された | タイポ、未実装演算子 |
+
+#### 表示マッピング（Runtime UI / Builder UI 共通方針）
+
+| code | ユーザー向け表示（例） |
+| --- | --- |
+| `MODIFY_RULE_CONDITION_MISSING_SELECTOR` | `invalid modify rule condition at <path>: choose op, all, or any` |
+| `MODIFY_RULE_CONDITION_VALUE_REQUIRED` | `invalid modify rule condition at <path>: missing value` |
+| `MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX` | `invalid modify rule condition at <path>: between requires min and max` |
+| `MODIFY_RULE_CONDITION_BETWEEN_RANGE_INVALID` | `invalid modify rule condition at <path>: min must be less than or equal to max` |
+| `MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES` | `invalid modify rule condition at <path>: in requires non-empty values` |
+| `MODIFY_RULE_CONDITION_UNSUPPORTED_OP` | `invalid modify rule condition at <path>: unsupported operator` |
+
+- 未知の `code` は生メッセージへフォールバックし、UI実装の先行配布時でも最低限の原因把握を可能にする。
+- Builder UIは編集フォーム上の該当ruleへフォーカスできるよう、`path` の機械解釈（`object=<id> property=<name>`）を維持する。
+
 ### OpenAPI共通コンポーネント運用ルール
 
 - `contracts/openapi/runtime.yaml` の `paths` では、成功応答、失敗応答ともに `components.responses` の `$ref` を優先して使用する。
