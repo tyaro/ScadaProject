@@ -1235,6 +1235,37 @@ mod tests {
 
     #[test]
     #[ignore = "requires local TCP listener"]
+    fn runtime_api_forwards_control_command_json_error_response() {
+        let response = runtime_api_handle_control_command_with_tag_server_response(
+            409,
+            r#"{"error":"command already in progress"}"#,
+        );
+
+        assert_eq!(409, response.status_code);
+        assert_eq!(r#"{"error":"command already in progress"}"#, response.body);
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_forwards_control_command_non_json_error_response() {
+        let response =
+            runtime_api_handle_control_command_with_tag_server_response(502, "bad gateway");
+
+        assert_eq!(502, response.status_code);
+        assert_eq!("bad gateway", response.body);
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_forwards_control_command_empty_success_response() {
+        let response = runtime_api_handle_control_command_with_tag_server_response(202, "");
+
+        assert_eq!(202, response.status_code);
+        assert_eq!("", response.body);
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
     fn runtime_api_returns_screen_projection_from_tag_snapshot() {
         let screen_path = std::env::temp_dir().join(format!(
             "scada-preview-runtime-screen-{}.json",
@@ -1491,6 +1522,40 @@ mod tests {
         )
         .expect("write screen");
         screen_path
+    }
+
+    fn runtime_api_handle_control_command_with_tag_server_response(
+        status_code: u16,
+        body: &str,
+    ) -> RuntimeHttpResponse {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let response_body = body.to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/control-commands", request.path);
+            assert!(request.body.contains(r#""command_id":"cmd-1""#));
+
+            let response = RuntimeHttpResponse::json(status_code, response_body);
+            stream.write_all(&response.to_http_bytes()).expect("write");
+        });
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}")).expect("client"),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            valid_control_command_json(),
+        ));
+        server.join().expect("server");
+        response
+    }
+
+    fn valid_control_command_json() -> &'static str {
+        r#"{"command_id":"cmd-1","idempotency_key":"key-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#
     }
 
     #[test]

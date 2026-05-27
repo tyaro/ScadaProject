@@ -143,6 +143,7 @@
   - `projection` でTag Server snapshot取得が失敗したときに `502 Bad Gateway` を返す境界テストを追加
   - `projection` のinvalid JSONと不正 `screen_path` を `400` で返す境界テストを追加
   - Tag Server snapshot応答が不正JSONまたは空本文のときにRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - ControlCommand転送でTag Serverの非2xx JSON、非JSON、空成功応答をRuntime APIが透過することを境界テストへ追加
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -260,7 +261,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
-3. Runtime APIのControlCommand転送境界で、Tag Server側の非JSON/空応答や非2xx応答の扱いを確認する。
+3. Runtime UIでControlCommand成功応答が空/不正JSONだった場合の表示フォールバックを追加する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -308,6 +309,8 @@
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p preview-runtime`: 成功（Tag Server snapshot不正JSON/空応答の通常テスト確認、bind依存テストはignored）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server snapshot不正JSON/空応答のbind依存境界テストを含む6件）
+- `cargo test -p preview-runtime`: 成功（ControlCommand転送境界テスト追加後、bind依存テストはignored）
+- `cargo test -p preview-runtime -- --ignored`: 成功（ControlCommand転送の非2xx JSON/非JSON/空成功応答テストを含む9件）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
 - `scripts/check_preview_runtime_mqtt_resync.sh`: 成功（`mqtt-subscribe` 失敗→snapshot再同期→`backoff=1s` ログを検証）
 - `nvm use 24 && npm --version`: `11.13.0`
