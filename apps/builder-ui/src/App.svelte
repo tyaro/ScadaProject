@@ -15,19 +15,134 @@
     valid: boolean
   }
 
+  type ModifyRuleForm = {
+    property: string
+    bindingKey: string
+    trueValue: string
+    falseValue: string
+  }
+
+  type ScreenObjectForm = {
+    objectId: string
+    svgAssetId: string
+    tagBindings: Record<string, string>
+    modifyRules: ModifyRuleForm[]
+  }
+
   const sampleKnownError =
     "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
   const sampleUnknownError =
     "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state"
+  const propertyOptions = ['visible', 'color', 'text']
+  const initialScreenObjects: ScreenObjectForm[] = [
+    {
+      objectId: 'pump-001',
+      svgAssetId: 'pump-symbol',
+      tagBindings: {
+        state: 'mock.running.001',
+        value: 'mock.temperature.001',
+      },
+      modifyRules: [
+        {
+          property: 'visible',
+          bindingKey: 'state',
+          trueValue: 'true',
+          falseValue: 'false',
+        },
+        {
+          property: 'color',
+          bindingKey: 'value',
+          trueValue: '#cc3333',
+          falseValue: '#3cb371',
+        },
+      ],
+    },
+    {
+      objectId: 'label-001',
+      svgAssetId: 'text-label',
+      tagBindings: {
+        value: 'mock.temperature.001',
+      },
+      modifyRules: [
+        {
+          property: 'text',
+          bindingKey: 'value',
+          trueValue: 'NORMAL',
+          falseValue: 'CHECK',
+        },
+      ],
+    },
+  ]
 
-  let inputError = sampleKnownError
-  let loading = false
-  let apiError = ''
-  let response: ErrorMappingResponse | null = null
-  let parsedTarget: ParsedTargetPath = { objectId: null, property: null, valid: false }
-  let focusStatus = 'No parsed target yet'
+  let inputError = $state(sampleKnownError)
+  let loading = $state(false)
+  let apiError = $state('')
+  let response = $state<ErrorMappingResponse | null>(null)
+  let parsedTarget = $state<ParsedTargetPath>({ objectId: null, property: null, valid: false })
+  let focusStatus = $state('No parsed target yet')
+  let screenObjects = $state<ScreenObjectForm[]>(structuredClone(initialScreenObjects))
+  let selectedObjectIndex = $state(0)
+  let selectedRuleIndex = $state(0)
   let objectField: HTMLInputElement | null = null
-  let propertyField: HTMLInputElement | null = null
+  let propertyField: HTMLSelectElement | null = null
+
+  const emptyRule = (): ModifyRuleForm => ({
+    property: 'visible',
+    bindingKey: 'value',
+    trueValue: '',
+    falseValue: '',
+  })
+
+  const emptyObject = (objectId: string): ScreenObjectForm => ({
+    objectId,
+    svgAssetId: 'draft-symbol',
+    tagBindings: {
+      value: '',
+    },
+    modifyRules: [emptyRule()],
+  })
+
+  function selectedObject(): ScreenObjectForm {
+    return screenObjects[selectedObjectIndex]
+  }
+
+  function selectedRule(): ModifyRuleForm {
+    const object = selectedObject()
+    return object.modifyRules[selectedRuleIndex]
+  }
+
+  function selectObject(index: number) {
+    selectedObjectIndex = index
+    selectedRuleIndex = 0
+  }
+
+  function addDraftObject(objectId: string): number {
+    screenObjects = [
+      ...screenObjects,
+      emptyObject(objectId),
+    ]
+    return screenObjects.length - 1
+  }
+
+  function ensureRule(objectIndex: number, property: string | null): number {
+    if (!property) {
+      return 0
+    }
+
+    const ruleIndex = screenObjects[objectIndex].modifyRules.findIndex((rule) => rule.property === property)
+    if (ruleIndex >= 0) {
+      return ruleIndex
+    }
+
+    screenObjects[objectIndex].modifyRules = [
+      ...screenObjects[objectIndex].modifyRules,
+      {
+        ...emptyRule(),
+        property,
+      },
+    ]
+    return screenObjects[objectIndex].modifyRules.length - 1
+  }
 
   function parseTargetPath(path: string | null): ParsedTargetPath {
     if (!path) {
@@ -50,6 +165,27 @@
     if (!parsedTarget.valid) {
       focusStatus = 'Path could not be parsed into object/property tokens'
       return
+    }
+
+    await tick()
+
+    let nextObjectIndex = parsedTarget.objectId
+      ? screenObjects.findIndex((object) => object.objectId === parsedTarget.objectId)
+      : selectedObjectIndex
+
+    if (nextObjectIndex < 0) {
+      nextObjectIndex = addDraftObject(parsedTarget.objectId ?? 'draft-object')
+    }
+
+    selectedObjectIndex = nextObjectIndex
+    selectedRuleIndex = ensureRule(nextObjectIndex, parsedTarget.property)
+
+    if (parsedTarget.objectId) {
+      selectedObject().objectId = parsedTarget.objectId
+    }
+
+    if (parsedTarget.property) {
+      selectedRule().property = parsedTarget.property
     }
 
     await tick()
@@ -145,13 +281,13 @@
       <textarea bind:value={inputError} aria-label="Raw condition error"></textarea>
 
       <div class="actions">
-        <button class="primary" type="button" on:click={mapError} disabled={loading}>
+        <button class="primary" type="button" onclick={mapError} disabled={loading}>
           {loading ? 'Mapping...' : 'Map error'}
         </button>
-        <button class="secondary" type="button" on:click={() => useSample(sampleKnownError)}>
+        <button class="secondary" type="button" onclick={() => useSample(sampleKnownError)}>
           Use known sample
         </button>
-        <button class="secondary" type="button" on:click={() => useSample(sampleUnknownError)}>
+        <button class="secondary" type="button" onclick={() => useSample(sampleUnknownError)}>
           Use unknown sample
         </button>
       </div>
@@ -166,7 +302,7 @@
       <ul class="hint-list">
         <li>`known_code=true` のときはテンプレート文言を表示します。</li>
         <li>未知コードは `user_message` に生エラーを残し、UIが最低限の原因を表示できます。</li>
-        <li>`path` が `object` / `property` を含むときは、右側の編集スタブで該当入力へフォーカスします。</li>
+        <li>`path` が `object` / `property` を含むときは、右側の Screen Object Editor で該当フォームへ移動します。</li>
       </ul>
     </section>
 
@@ -219,12 +355,27 @@
       <div class="editor-stub" data-testid="editor-stub">
         <div class="editor-stub-header">
           <div>
-            <h3>Editor Stub</h3>
-            <p>`path` の機械解釈を確認するための最小編集面</p>
+            <h3>Screen Object Editor</h3>
+            <p>`mock-main.screen.json` 相当の object と modify rule を編集する最小フォーム</p>
           </div>
           <span class:good={parsedTarget.valid} class="chip">
             {parsedTarget.valid ? 'Parsed target' : 'No target'}
           </span>
+        </div>
+
+        <div class="object-list" data-testid="object-list">
+          {#each screenObjects as object, index}
+            <button
+              class:active={index === selectedObjectIndex}
+              class="object-pill"
+              data-testid={`object-pill-${object.objectId}`}
+              type="button"
+              onclick={() => selectObject(index)}
+            >
+              <strong>{object.objectId}</strong>
+              <span>{object.svgAssetId}</span>
+            </button>
+          {/each}
         </div>
 
         <label class="field">
@@ -233,21 +384,58 @@
             bind:this={objectField}
             data-testid="object-field"
             type="text"
-            readonly
-            value={parsedTarget.objectId ?? ''}
+            bind:value={screenObjects[selectedObjectIndex].objectId}
           />
         </label>
 
         <label class="field">
-          <span>Property</span>
-          <input
+          <span>SVG Asset</span>
+          <input bind:value={screenObjects[selectedObjectIndex].svgAssetId} type="text" />
+        </label>
+
+        <div class="binding-grid">
+          {#each Object.entries(selectedObject().tagBindings) as [bindingKey, tagId]}
+            <label class="field">
+              <span>{bindingKey} binding</span>
+              <input value={tagId} type="text" readonly />
+            </label>
+          {/each}
+        </div>
+
+        <label class="field">
+          <span>Rule Property</span>
+          <select
             bind:this={propertyField}
             data-testid="property-field"
-            type="text"
-            readonly
-            value={parsedTarget.property ?? ''}
-          />
+            bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].property}
+          >
+            {#each propertyOptions as property}
+              <option value={property}>{property}</option>
+            {/each}
+          </select>
         </label>
+
+        <div class="binding-grid two-up">
+          <label class="field">
+            <span>Binding Key</span>
+            <input bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].bindingKey} type="text" />
+          </label>
+
+          <label class="field">
+            <span>True Value</span>
+            <input bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].trueValue} type="text" />
+          </label>
+
+          <label class="field">
+            <span>False Value</span>
+            <input bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].falseValue} type="text" />
+          </label>
+        </div>
+
+        <div class="result-row compact" data-testid="editor-selection-row">
+          <span>Selected Rule</span>
+          <code>{selectedObject().objectId} / {selectedRule().property}</code>
+        </div>
       </div>
     </section>
   </section>

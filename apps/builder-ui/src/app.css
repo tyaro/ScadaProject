@@ -33,7 +33,8 @@ body {
 
 button,
 textarea,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -183,7 +184,18 @@ input {
   color: var(--ink);
 }
 
+select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #fffdfa;
+  color: var(--ink);
+}
+
 input:focus,
+select:focus,
 textarea:focus,
 button:focus {
   outline: 2px solid rgba(181, 84, 47, 0.55);
@@ -301,6 +313,48 @@ button:focus {
   color: var(--muted);
 }
 
+.object-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.object-pill {
+  min-width: 140px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #fffdfa;
+  text-align: left;
+}
+
+.object-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.object-pill strong,
+.object-pill span {
+  display: block;
+}
+
+.object-pill span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.binding-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.binding-grid.two-up {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -317,6 +371,10 @@ button:focus {
   text-transform: uppercase;
 }
 
+.result-row.compact {
+  margin-top: 14px;
+}
+
 @media (max-width: 880px) {
   .hero,
   .workspace {
@@ -326,5 +384,9 @@ button:focus {
   .shell {
     width: min(100% - 20px, 1120px);
     padding-top: 16px;
+  }
+
+  .binding-grid.two-up {
+    grid-template-columns: 1fr;
   }
 }

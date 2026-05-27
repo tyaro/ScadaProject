@@ -351,12 +351,46 @@ mod tests {
     }
 
     #[test]
+    fn handle_builder_request_returns_health_json_contract() {
+        let request = BuilderHttpRequest::new("GET", "/health", "");
+        let response = handle_builder_request(&request);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(200, response.status_code);
+        assert_eq!("application/json", response.content_type);
+        assert_eq!(Some("builder-api"), payload["service"].as_str());
+        assert_eq!(Some("healthy"), payload["status"].as_str());
+    }
+
+    #[test]
+    fn handle_builder_request_returns_unknown_code_contract_fields() {
+        let raw =
+            "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state";
+        let request = BuilderHttpRequest::new(
+            "POST",
+            "/api/v1/errors/map",
+            &format!(r#"{{"error":"{}"}}"#, raw),
+        );
+        let response = handle_builder_request(&request);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(200, response.status_code);
+        assert_eq!("application/json", response.content_type);
+        assert_eq!(Some("SOME_NEW_ERROR"), payload["code"].as_str());
+        assert_eq!(Some("object=valve-002 property=text"), payload["path"].as_str());
+        assert_eq!(Some("unexpected runtime validation state"), payload["detail"].as_str());
+        assert_eq!(Some(false), payload["known_code"].as_bool());
+        assert_eq!(Some(raw), payload["user_message"].as_str());
+    }
+
+    #[test]
     fn handle_builder_request_returns_bad_request_for_invalid_json() {
         let request = BuilderHttpRequest::new("POST", "/api/v1/errors/map", "{not-json");
         let response = handle_builder_request(&request);
         let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
 
         assert_eq!(400, response.status_code);
+        assert_eq!("application/json", response.content_type);
         assert!(payload["error"]
             .as_str()
             .expect("error")
