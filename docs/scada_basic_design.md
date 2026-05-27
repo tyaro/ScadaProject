@@ -489,6 +489,8 @@ Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_co
 
 この最小 Editor では、rule の condition 本体入力として `op/value/min/max/values` を持ち、`between` や `in` など演算子ごとに必要項目を切り替えて編集できるものとする。
 
+また、Editor 上の入力値は `screen-definition.schema.json` に沿う最小シリアライズへ変換し、保存前にJSONプレビューとして確認できるようにする。
+
 #### Builder API エラーマッピングHTTPエンドポイント
 
 Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。

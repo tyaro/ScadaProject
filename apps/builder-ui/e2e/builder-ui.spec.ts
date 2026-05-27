@@ -32,6 +32,11 @@ test('maps known coded condition error and shows structured response', async ({ 
   await expect(page.getByTestId('property-field')).toBeFocused()
   await expect(page.getByTestId('condition-op-field')).toHaveValue('any')
   await expect(page.getByTestId('condition-values-field')).toHaveValue('lt:18,gt:28')
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"screen_id": "mock-main"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"object_id": "pump-001"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"property": "color"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"any"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"op": "lt"/)
 })
 
 test('keeps fallback behavior for unknown codes', async ({ page }) => {
@@ -63,4 +68,6 @@ test('keeps fallback behavior for unknown codes', async ({ page }) => {
   await expect(page.getByTestId('property-field')).toHaveValue('text')
   await expect(page.getByTestId('condition-op-field')).toHaveValue('eq')
   await expect(page.getByTestId('condition-value-field')).toHaveValue('')
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"object_id": "valve-002"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"property": "text"/)
 })

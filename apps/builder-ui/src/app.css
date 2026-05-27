@@ -393,6 +393,14 @@ button:focus {
   margin-top: 14px;
 }
 
+.json-preview {
+  margin-top: 10px;
+  min-height: 260px;
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @media (max-width: 880px) {
   .hero,
   .workspace {

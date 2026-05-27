@@ -28,8 +28,51 @@
   type ScreenObjectForm = {
     objectId: string
     svgAssetId: string
+    x: number
+    y: number
+    width: number
+    height: number
     tagBindings: Record<string, string>
     modifyRules: ModifyRuleForm[]
+  }
+
+  type ScreenModifyRuleCondition = {
+    op?: string
+    value?: unknown
+    min?: number
+    max?: number
+    values?: unknown[]
+    all?: ScreenModifyRuleCondition[]
+    any?: ScreenModifyRuleCondition[]
+  }
+
+  type ScreenModifyRuleDefinition = {
+    property: string
+    binding_key: string
+    true_value: string
+    false_value: string
+    condition: ScreenModifyRuleCondition
+  }
+
+  type SerializedScreenObject = {
+    object_id: string
+    svg_asset_id: string
+    x: number
+    y: number
+    width: number
+    height: number
+    tag_bindings: Record<string, string>
+    modify_rules: ScreenModifyRuleDefinition[]
+  }
+
+  type SerializedScreenDefinition = {
+    schema_version: string
+    screen_id: string
+    project_id: string
+    name: string
+    canvas_width: number
+    canvas_height: number
+    objects: SerializedScreenObject[]
   }
 
   const sampleKnownError =
@@ -42,6 +85,10 @@
     {
       objectId: 'pump-001',
       svgAssetId: 'pump-symbol',
+      x: 80,
+      y: 120,
+      width: 120,
+      height: 120,
       tagBindings: {
         state: 'mock.running.001',
         value: 'mock.temperature.001',
@@ -74,6 +121,10 @@
     {
       objectId: 'label-001',
       svgAssetId: 'text-label',
+      x: 240,
+      y: 140,
+      width: 280,
+      height: 48,
       tagBindings: {
         value: 'mock.temperature.001',
       },
@@ -120,11 +171,125 @@
   const emptyObject = (objectId: string): ScreenObjectForm => ({
     objectId,
     svgAssetId: 'draft-symbol',
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 60,
     tagBindings: {
       value: '',
     },
     modifyRules: [emptyRule()],
   })
+
+  function parsePrimitive(raw: string): unknown {
+    const text = raw.trim()
+    if (text === '') {
+      return ''
+    }
+    if (text === 'true') {
+      return true
+    }
+    if (text === 'false') {
+      return false
+    }
+
+    const maybeNumber = Number(text)
+    if (!Number.isNaN(maybeNumber)) {
+      return maybeNumber
+    }
+
+    return text
+  }
+
+  function parseConditionClause(clause: string): ScreenModifyRuleCondition | null {
+    const trimmed = clause.trim()
+    if (trimmed === '') {
+      return null
+    }
+
+    const [op, ...rest] = trimmed.split(':')
+    const valueToken = rest.join(':')
+    if (!op || valueToken.trim() === '') {
+      return null
+    }
+
+    return {
+      op: op.trim(),
+      value: parsePrimitive(valueToken),
+    }
+  }
+
+  function buildCondition(rule: ModifyRuleForm): ScreenModifyRuleCondition {
+    const op = rule.conditionOp
+
+    if (usesSingleValueOp(op)) {
+      return {
+        op,
+        value: parsePrimitive(rule.conditionValue),
+      }
+    }
+
+    if (op === 'between') {
+      return {
+        op,
+        min: Number(rule.conditionMin),
+        max: Number(rule.conditionMax),
+      }
+    }
+
+    if (op === 'in') {
+      return {
+        op,
+        values: rule.conditionValues
+          .split(',')
+          .map((item) => item.trim())
+          .filter((item) => item !== '')
+          .map(parsePrimitive),
+      }
+    }
+
+    const clauses = rule.conditionValues
+      .split(',')
+      .map(parseConditionClause)
+      .filter((clause): clause is ScreenModifyRuleCondition => clause !== null)
+
+    if (op === 'all') {
+      return { all: clauses }
+    }
+
+    if (op === 'any') {
+      return { any: clauses }
+    }
+
+    return { op: 'eq', value: '' }
+  }
+
+  function buildScreenDefinition(): SerializedScreenDefinition {
+    return {
+      schema_version: '1.0.0',
+      screen_id: 'mock-main',
+      project_id: 'demo',
+      name: 'Mock Main Screen',
+      canvas_width: 1280,
+      canvas_height: 720,
+      objects: screenObjects.map((object) => ({
+        object_id: object.objectId,
+        svg_asset_id: object.svgAssetId,
+        x: object.x,
+        y: object.y,
+        width: object.width,
+        height: object.height,
+        tag_bindings: object.tagBindings,
+        modify_rules: object.modifyRules.map((rule) => ({
+          property: rule.property,
+          binding_key: rule.bindingKey,
+          true_value: rule.trueValue,
+          false_value: rule.falseValue,
+          condition: buildCondition(rule),
+        })),
+      })),
+    }
+  }
 
   function selectedObject(): ScreenObjectForm {
     return screenObjects[selectedObjectIndex]
@@ -430,6 +595,25 @@
           <input bind:value={screenObjects[selectedObjectIndex].svgAssetId} type="text" />
         </label>
 
+        <div class="binding-grid two-up">
+          <label class="field">
+            <span>X</span>
+            <input bind:value={screenObjects[selectedObjectIndex].x} type="number" />
+          </label>
+          <label class="field">
+            <span>Y</span>
+            <input bind:value={screenObjects[selectedObjectIndex].y} type="number" />
+          </label>
+          <label class="field">
+            <span>Width</span>
+            <input bind:value={screenObjects[selectedObjectIndex].width} type="number" />
+          </label>
+          <label class="field">
+            <span>Height</span>
+            <input bind:value={screenObjects[selectedObjectIndex].height} type="number" />
+          </label>
+        </div>
+
         <div class="binding-grid">
           {#each Object.entries(selectedObject().tagBindings) as [bindingKey, tagId]}
             <label class="field">
@@ -527,6 +711,16 @@
         <div class="result-row compact" data-testid="editor-selection-row">
           <span>Selected Rule</span>
           <code>{selectedObject().objectId} / {selectedRule().property}</code>
+        </div>
+
+        <div class="result-row compact" data-testid="screen-json-row">
+          <span>Serialized Screen JSON</span>
+          <textarea
+            class="json-preview"
+            data-testid="screen-json-preview"
+            readonly
+            value={JSON.stringify(buildScreenDefinition(), null, 2)}
+          ></textarea>
         </div>
       </div>
     </section>
