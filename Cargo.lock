@@ -787,6 +787,7 @@ dependencies = [
  "mock-driver",
  "rumqttc",
  "scada-core",
+ "serde",
  "serde_json",
  "tokio",
 ]

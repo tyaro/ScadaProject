@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
+use serde::Serialize;
 use scada_core::command::{ControlCommand, ControlCommandStatus};
 use scada_core::driver::{
     driver_write_request_to_json, driver_write_response_from_json_str,
@@ -48,6 +49,7 @@ pub struct TagServerApi {
     required_token: Option<String>,
     mqtt: Option<MqttPublishConfig>,
     driver_manager: Option<DriverManagerClientConfig>,
+    operation_logs: VecDeque<OperationLogEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,6 +63,24 @@ pub struct MqttPublishConfig {
 pub struct DriverManagerClientConfig {
     pub base_url: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OperationLogEntry {
+    pub command_id: String,
+    pub user_id: String,
+    pub tag_id: String,
+    pub requested_value: String,
+    pub requested_at: String,
+    pub status: String,
+    pub result: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct OperationLogList {
+    items: Vec<OperationLogEntry>,
+}
+
+const OPERATION_LOG_CAPACITY: usize = 256;
 
 impl WritePolicy {
     pub fn new() -> Self {
@@ -195,6 +215,7 @@ impl TagServerApi {
             required_token: None,
             mqtt: None,
             driver_manager: None,
+            operation_logs: VecDeque::new(),
         }
     }
 
@@ -246,8 +267,27 @@ impl TagServerApi {
             ("POST", "/api/v1/tags/snapshot") => self.handle_snapshot(&request.body),
             ("POST", "/api/v1/driver-values") => self.handle_driver_values(&request.body),
             ("POST", "/api/v1/control-commands") => self.handle_control_command(&request.body),
+            ("GET", "/api/v1/operation-logs") => self.handle_operation_logs(),
             _ => HttpResponse::json(404, error_json("not found")),
         }
+    }
+
+    fn handle_operation_logs(&self) -> HttpResponse {
+        let response = OperationLogList {
+            items: self.operation_logs.iter().rev().cloned().collect(),
+        };
+
+        match serde_json::to_string(&response) {
+            Ok(body) => HttpResponse::json(200, body),
+            Err(error) => HttpResponse::json(500, error_json(&format!("operation log serialization failed: {error}"))),
+        }
+    }
+
+    fn record_operation_log(&mut self, entry: OperationLogEntry) {
+        if self.operation_logs.len() >= OPERATION_LOG_CAPACITY {
+            self.operation_logs.pop_front();
+        }
+        self.operation_logs.push_back(entry);
     }
 
     fn is_authorized(&self, request: &HttpRequest) -> bool {
@@ -387,6 +427,19 @@ impl TagServerApi {
                     match post_driver_write(driver_manager, &driver_request) {
                         Ok(driver_response) => {
                             apply_driver_write_response(&mut command, &driver_response);
+                            self.record_operation_log(OperationLogEntry {
+                                command_id: command_id.clone(),
+                                user_id: user_id.clone(),
+                                tag_id: tag_id.clone(),
+                                requested_value: requested_value.clone(),
+                                requested_at: requested_at.clone(),
+                                status: format!("{:?}", command.status),
+                                result: if driver_response.accepted {
+                                    "accepted".to_string()
+                                } else {
+                                    driver_response.message.clone()
+                                },
+                            });
                             HttpResponse::json(
                                 202,
                                 format!(
@@ -399,6 +452,15 @@ impl TagServerApi {
                         }
                         Err(error) => {
                             command.transition_to(ControlCommandStatus::Failed);
+                            self.record_operation_log(OperationLogEntry {
+                                command_id: command_id.clone(),
+                                user_id: user_id.clone(),
+                                tag_id: tag_id.clone(),
+                                requested_value: requested_value.clone(),
+                                requested_at: requested_at.clone(),
+                                status: format!("{:?}", command.status),
+                                result: error.clone(),
+                            });
                             HttpResponse::json(
                                 502,
                                 format!(
@@ -411,6 +473,15 @@ impl TagServerApi {
                         }
                     }
                 } else {
+                    self.record_operation_log(OperationLogEntry {
+                        command_id: command_id.clone(),
+                        user_id: user_id.clone(),
+                        tag_id: tag_id.clone(),
+                        requested_value: requested_value.clone(),
+                        requested_at: requested_at.clone(),
+                        status: format!("{:?}", command.status),
+                        result: "accepted".to_string(),
+                    });
                     HttpResponse::json(
                         202,
                         format!(
@@ -421,14 +492,26 @@ impl TagServerApi {
                     )
                 }
             }
-            Err(error) => HttpResponse::json(
-                409,
-                format!(
-                    r#"{{"error":{},"command":{}}}"#,
-                    json_string(&error),
-                    control_command_to_json(&command)
-                ),
-            ),
+            Err(error) => {
+                self.record_operation_log(OperationLogEntry {
+                    command_id: command_id.clone(),
+                    user_id,
+                    tag_id,
+                    requested_value,
+                    requested_at,
+                    status: format!("{:?}", command.status),
+                    result: error.clone(),
+                });
+
+                HttpResponse::json(
+                    409,
+                    format!(
+                        r#"{{"error":{},"command":{}}}"#,
+                        json_string(&error),
+                        control_command_to_json(&command)
+                    ),
+                )
+            }
         }
     }
 }
@@ -1061,6 +1144,68 @@ mod tests {
         assert_eq!(202, response.status_code);
         assert!(response.body.contains(r#""status":"Validated""#));
         assert!(response.body.contains(r#""driver_request""#));
+    }
+
+    #[test]
+    fn control_command_endpoint_persists_operation_log() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"cmd-log-1","idempotency_key":"idem-log-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:00Z","timeout_ms":3000}"#,
+        );
+
+        let response = api.handle(&request);
+        assert_eq!(202, response.status_code);
+
+        let logs = api.handle(&HttpRequest::new("GET", "/api/v1/operation-logs", ""));
+
+        assert_eq!(200, logs.status_code);
+        let body = serde_json::from_str::<serde_json::Value>(&logs.body).expect("logs json");
+        let items = body
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .expect("items");
+        assert!(!items.is_empty());
+
+        let first = &items[0];
+        assert_eq!(Some("cmd-log-1"), first.get("command_id").and_then(serde_json::Value::as_str));
+        assert_eq!(Some("operator"), first.get("user_id").and_then(serde_json::Value::as_str));
+        assert_eq!(Some("mock.running.001"), first.get("tag_id").and_then(serde_json::Value::as_str));
+        assert_eq!(Some("Validated"), first.get("status").and_then(serde_json::Value::as_str));
+    }
+
+    #[test]
+    fn operation_logs_are_returned_in_reverse_chronological_order() {
+        let mut api = TagServerApi::phase0_mock();
+
+        let first = HttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"cmd-log-1","idempotency_key":"idem-log-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:00Z","timeout_ms":3000}"#,
+        );
+        let second = HttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"cmd-log-2","idempotency_key":"idem-log-2","user_id":"operator","tag_id":"mock.temperature.001","requested_value":42.0,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":3000}"#,
+        );
+
+        assert_eq!(202, api.handle(&first).status_code);
+        assert_eq!(409, api.handle(&second).status_code);
+
+        let logs = api.handle(&HttpRequest::new("GET", "/api/v1/operation-logs", ""));
+        assert_eq!(200, logs.status_code);
+
+        let body = serde_json::from_str::<serde_json::Value>(&logs.body).expect("logs json");
+        let items = body
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .expect("items");
+
+        assert!(items.len() >= 2);
+        assert_eq!(Some("cmd-log-2"), items[0].get("command_id").and_then(serde_json::Value::as_str));
+        assert_eq!(Some("Rejected"), items[0].get("status").and_then(serde_json::Value::as_str));
+        assert_eq!(Some("cmd-log-1"), items[1].get("command_id").and_then(serde_json::Value::as_str));
     }
 
     #[test]

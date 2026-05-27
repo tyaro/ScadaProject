@@ -83,6 +83,15 @@ paths:
           $ref: "#/components/responses/ConflictError"
         "502":
           $ref: "#/components/responses/BadGatewayError"
+  /api/v1/operation-logs:
+    get:
+      summary: Fetch recent control operation logs
+      description: Phase 1 minimal operation-log endpoint backed by in-memory recent control command records (latest first, bounded capacity).
+      responses:
+        "200":
+          $ref: "#/components/responses/OperationLogsOk"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
 
 components:
   responses:
@@ -116,6 +125,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ControlCommandAcceptedResponse"
+    OperationLogsOk:
+      description: Recent operation logs
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OperationLogListResponse"
     BadRequestError:
       description: Invalid request
       content:
@@ -289,6 +304,40 @@ components:
       required:
         - command
         - driver_request
+    OperationLogEntry:
+      type: object
+      properties:
+        command_id:
+          type: string
+        user_id:
+          type: string
+        tag_id:
+          type: string
+        requested_value:
+          type: string
+        requested_at:
+          type: string
+        status:
+          type: string
+        result:
+          type: string
+      required:
+        - command_id
+        - user_id
+        - tag_id
+        - requested_value
+        - requested_at
+        - status
+        - result
+    OperationLogListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OperationLogEntry"
+      required:
+        - items
     ErrorResponse:
       type: object
       properties:
