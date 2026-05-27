@@ -14,6 +14,15 @@
     object_id: string
     svg_asset_id: string
     bindings: BindingState[]
+    modifiers?: ModifierState[]
+  }
+
+  type ModifierState = {
+    property: string
+    binding_key: string
+    tag_id: string
+    source_value: unknown
+    rendered: string | null
   }
 
   type ScreenProjection = {
@@ -260,6 +269,9 @@
   $: runningBinding = findBinding(projection, 'mock.running.001')
   $: temperatureBinding = findBinding(projection, 'mock.temperature.001')
   $: isRunning = runningBinding?.value === true
+  $: pumpVisible = parseModifierBoolean(findModifierRendered(projection, 'pump-001', 'visible')) ?? true
+  $: pumpColor = findModifierRendered(projection, 'pump-001', 'color')
+  $: runningText = findModifierRendered(projection, 'label-001', 'text') ?? (isRunning ? 'Running' : 'Stopped')
   $: temperature = typeof temperatureBinding?.value === 'number'
     ? temperatureBinding.value.toFixed(1)
     : formatValue(temperatureBinding?.value)
@@ -279,6 +291,29 @@
     return currentProjection?.object_states
       .flatMap((object) => object.bindings)
       .find((binding) => binding.tag_id === tagId)
+  }
+
+  function findModifierRendered(
+    currentProjection: ScreenProjection | null,
+    objectId: string,
+    property: string
+  ): string | null {
+    const object = currentProjection?.object_states.find((item) => item.object_id === objectId)
+    if (!object) return null
+    const modifier = (object.modifiers ?? []).find((item) => item.property === property)
+    return modifier?.rendered ?? null
+  }
+
+  function parseModifierBoolean(value: string | null): boolean | undefined {
+    if (value === null) return undefined
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true' || normalized === '1' || normalized === 'on' || normalized === 'yes') {
+      return true
+    }
+    if (normalized === 'false' || normalized === '0' || normalized === 'off' || normalized === 'no') {
+      return false
+    }
+    return undefined
   }
 
   function formatValue(value: unknown): string {
@@ -351,11 +386,13 @@
 
   <section class="process-view" aria-busy={loading}>
     <div class="process-stage">
-      <div class:running={isRunning} class="pump-asset">
-        <div class="pump-body"></div>
-        <div class="pump-motor"></div>
-        <div class="flow-line"></div>
-      </div>
+      {#if pumpVisible}
+        <div class:running={isRunning} class="pump-asset">
+          <div class="pump-body" style:background={pumpColor ?? undefined}></div>
+          <div class="pump-motor"></div>
+          <div class="flow-line"></div>
+        </div>
+      {/if}
       <div class="value-stack">
         <span>mock.temperature.001</span>
         <strong>{temperature} °C</strong>
@@ -363,7 +400,7 @@
       </div>
       <div class="state-stack">
         <span>mock.running.001</span>
-        <strong>{isRunning ? 'Running' : 'Stopped'}</strong>
+        <strong>{runningText}</strong>
         <small>{runningBinding?.quality ?? 'Missing'} · seq {runningBinding?.sequence ?? '-'}</small>
       </div>
     </div>

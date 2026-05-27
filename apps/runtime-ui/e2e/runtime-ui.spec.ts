@@ -27,6 +27,63 @@ const projectionResponse = {
   ],
 }
 
+const projectionWithModifiers = {
+  screen_id: 'mock-main',
+  project_id: 'demo',
+  object_states: [
+    {
+      object_id: 'pump-001',
+      svg_asset_id: 'pump-symbol',
+      bindings: [
+        {
+          key: 'state',
+          tag_id: 'mock.running.001',
+          value: false,
+          quality: 'Simulated',
+          sequence: 5,
+        },
+        {
+          key: 'value',
+          tag_id: 'mock.temperature.001',
+          value: 21.5,
+          quality: 'Simulated',
+          sequence: 6,
+        },
+      ],
+      modifiers: [
+        {
+          property: 'visible',
+          binding_key: 'state',
+          tag_id: 'mock.running.001',
+          source_value: true,
+          rendered: 'true',
+        },
+        {
+          property: 'color',
+          binding_key: 'state',
+          tag_id: 'mock.running.001',
+          source_value: true,
+          rendered: '#22aa44',
+        },
+      ],
+    },
+    {
+      object_id: 'label-001',
+      svg_asset_id: 'label-symbol',
+      bindings: [],
+      modifiers: [
+        {
+          property: 'text',
+          binding_key: 'state',
+          tag_id: 'mock.running.001',
+          source_value: true,
+          rendered: 'Pump Ready',
+        },
+      ],
+    },
+  ],
+}
+
 test('renders projection and posts control command', async ({ page }) => {
   let projectionCalls = 0
   let commandCalls = 0
@@ -72,6 +129,77 @@ test('renders projection and posts control command', async ({ page }) => {
 
   expect(commandCalls).toBeGreaterThanOrEqual(1)
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
+})
+
+test('applies modifier text, color, and visibility from projection', async ({ page }) => {
+  let projectionCalls = 0
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    if (projectionCalls === 1) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(projectionWithModifiers),
+      })
+      return
+    }
+
+    const hiddenProjection = {
+      ...projectionWithModifiers,
+      object_states: projectionWithModifiers.object_states.map((objectState) => {
+        if (objectState.object_id === 'pump-001') {
+          return {
+            ...objectState,
+            modifiers: (objectState.modifiers ?? []).map((modifier) =>
+              modifier.property === 'visible'
+                ? { ...modifier, source_value: false, rendered: 'false' }
+                : modifier
+            ),
+          }
+        }
+        if (objectState.object_id === 'label-001') {
+          return {
+            ...objectState,
+            modifiers: (objectState.modifiers ?? []).map((modifier) =>
+              modifier.property === 'text'
+                ? { ...modifier, source_value: false, rendered: 'Pump Hidden' }
+                : modifier
+            ),
+          }
+        }
+        return objectState
+      }),
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(hiddenProjection),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page.locator('.state-stack strong')).toHaveText('Pump Ready')
+  await expect(page.locator('.pump-body')).toHaveCSS('background-color', 'rgb(34, 170, 68)')
+  await expect(page.locator('.pump-asset')).toHaveCount(1)
+
+  await page.getByRole('button', { name: 'Refresh projection' }).click()
+
+  await expect(page.locator('.state-stack strong')).toHaveText('Pump Hidden')
+  await expect(page.locator('.pump-asset')).toHaveCount(0)
 })
 
 test('re-fetches projection after start command', async ({ page }) => {

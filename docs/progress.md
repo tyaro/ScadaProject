@@ -213,6 +213,7 @@ Runtime API境界テストを強化
   - Preview Runtimeの投影モデルに `modifiers` を追加し、`modify_rules` をタグ値から解決した `rendered` 状態を返す最小実装を追加
   - `config/screens/mock-main.screen.json` に `visible` / `color` / `text` の `modify_rules` 例を追加
   - OpenAPIの `ScreenProjectionResponse` に `modifiers` を追加し、Runtime API投影契約を同期
+  - Runtime UIで `modifiers` の最小反映（色・表示・文字）を追加し、投影値に基づく表示変化をPlaywright E2Eで固定化
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
@@ -320,7 +321,7 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
-2. Runtime UIで `modifiers` を利用した表示反映（色・文字・表示状態）を段階導入し、E2Eで投影値との整合を固定化する。
+2. MQTT delta受信時の `modifiers` 再評価方針を定義し、Runtime UIで投影更新なしでも modify rules 表示を追従させる。
 
 ## フェーズ0完了条件棚卸し
 
