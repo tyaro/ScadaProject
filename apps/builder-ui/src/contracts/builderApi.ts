@@ -57,6 +57,11 @@ export type BuilderSaveScreenResponse = {
   saved_path: string
 }
 
+export type BuilderSaveScreenAsRequest = {
+  relative_path: string
+  screen: SerializedScreenDefinition
+}
+
 export function isBuilderErrorMapResponse(value: unknown): value is BuilderErrorMapResponse {
   if (!value || typeof value !== 'object') {
     return false
@@ -105,4 +110,13 @@ export function isBuilderSaveScreenResponse(value: unknown): value is BuilderSav
 
   const record = value as Record<string, unknown>
   return typeof record.saved_path === 'string'
+}
+
+export function isBuilderSaveScreenAsRequest(value: unknown): value is BuilderSaveScreenAsRequest {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const record = value as Record<string, unknown>
+  return typeof record.relative_path === 'string' && isSerializedScreenDefinition(record.screen)
 }

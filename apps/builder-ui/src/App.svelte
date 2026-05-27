@@ -5,6 +5,7 @@
     isBuilderErrorMapResponse,
     isBuilderErrorResponse,
     isSerializedScreenDefinition,
+    type BuilderSaveScreenAsRequest,
     type BuilderErrorMapRequest,
     type BuilderErrorMapResponse,
     type SerializedScreenDefinition,
@@ -48,6 +49,7 @@
   const propertyOptions = ['visible', 'color', 'text']
   const conditionOpOptions = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'any', 'all']
   const screenIdPattern = /^[A-Za-z0-9_-]+$/
+  const saveAsPathPattern = /^config\/screens\/[A-Za-z0-9_\/-]+\.screen\.json$/
   const initialScreenObjects: ScreenObjectForm[] = [
     {
       objectId: 'pump-001',
@@ -127,6 +129,7 @@
   let screenName = $state('Mock Main Screen')
   let canvasWidth = $state(1280)
   let canvasHeight = $state(720)
+  let saveAsRelativePath = $state('config/screens/mock-main.screen.json')
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -429,6 +432,39 @@
     return trimmed !== '' && screenIdPattern.test(trimmed)
   }
 
+  function isSaveAsPathValid(value: string): boolean {
+    const trimmed = value.trim()
+    if (trimmed === '') {
+      return false
+    }
+    if (!saveAsPathPattern.test(trimmed)) {
+      return false
+    }
+    if (trimmed.includes('..') || trimmed.includes('//') || trimmed.includes('\\')) {
+      return false
+    }
+    return true
+  }
+
+  function normalizedSaveAsPathOrError(): string | null {
+    const trimmed = saveAsRelativePath.trim()
+    if (trimmed === '') {
+      ioStatus = 'Project save-as failed: relative_path is required'
+      return null
+    }
+
+    if (!isSaveAsPathValid(trimmed)) {
+      ioStatus = 'Project save-as failed: relative_path must match config/screens/*.screen.json'
+      return null
+    }
+
+    if (trimmed !== saveAsRelativePath) {
+      saveAsRelativePath = trimmed
+    }
+
+    return trimmed
+  }
+
   function normalizedScreenIdOrError(action: 'load' | 'save'): string | null {
     const trimmed = screenId.trim()
     if (trimmed === '') {
@@ -454,6 +490,13 @@
       return 'config/screens/<screen_id>.screen.json'
     }
     return `config/screens/${trimmed}.screen.json`
+  }
+
+  function syncSaveAsPathToScreenId() {
+    const nextPath = projectScreenPath(screenId)
+    if (!nextPath.includes('<screen_id>')) {
+      saveAsRelativePath = nextPath
+    }
   }
 
   function applyLoadedScreenDefinition(parsed: SerializedScreenDefinition) {
@@ -525,6 +568,48 @@
       ioStatus = `Saved to ${body.saved_path}`
     } catch (error) {
       ioStatus = error instanceof Error ? `Project save failed: ${error.message}` : 'Project save failed'
+    }
+  }
+
+  async function saveScreenDefinitionAsProjectPath() {
+    const targetScreenId = normalizedScreenIdOrError('save')
+    if (!targetScreenId) {
+      return
+    }
+
+    const relativePath = normalizedSaveAsPathOrError()
+    if (!relativePath) {
+      return
+    }
+
+    ioStatus = `Saving ${targetScreenId} to ${relativePath}...`
+    try {
+      const payload: BuilderSaveScreenAsRequest = {
+        relative_path: relativePath,
+        screen: {
+          ...buildScreenDefinition(),
+          screen_id: targetScreenId,
+        },
+      }
+      const httpResponse = await fetch('/api/v1/screens/save-as', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!httpResponse.ok) {
+        const errorBody = await parseError(httpResponse)
+        throw new Error(errorBody)
+      }
+
+      const body = await httpResponse.json()
+      if (!isBuilderSaveScreenResponse(body)) {
+        throw new Error('builder api returned invalid save-as response contract')
+      }
+
+      ioStatus = `Saved to ${body.saved_path}`
+    } catch (error) {
+      ioStatus = error instanceof Error ? `Project save-as failed: ${error.message}` : 'Project save-as failed'
     }
   }
 
@@ -751,9 +836,32 @@
           <span>Project Path</span>
           <code>{projectScreenPath(screenId)}</code>
         </div>
+        <label class="field">
+          <span>Save As Relative Path</span>
+          <input data-testid="save-as-path-field" bind:value={saveAsRelativePath} type="text" />
+        </label>
+        <div class="project-io-actions">
+          <button class="secondary" type="button" data-testid="use-screen-id-path-button" onclick={syncSaveAsPathToScreenId}>
+            Use screen_id path
+          </button>
+          <button
+            class="secondary"
+            type="button"
+            data-testid="save-as-project-screen-button"
+            onclick={saveScreenDefinitionAsProjectPath}
+            disabled={!isScreenIdValid(screenId) || !isSaveAsPathValid(saveAsRelativePath)}
+          >
+            Save as path
+          </button>
+        </div>
         {#if !isScreenIdValid(screenId)}
           <p class="inline-error" data-testid="screen-id-validation-message">
             screen_id must match [A-Za-z0-9_-]
+          </p>
+        {/if}
+        {#if !isSaveAsPathValid(saveAsRelativePath)}
+          <p class="inline-error" data-testid="save-as-path-validation-message">
+            relative_path must match config/screens/*.screen.json
           </p>
         {/if}
       </div>

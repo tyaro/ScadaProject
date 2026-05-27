@@ -52,6 +52,20 @@ paths:
           $ref: "#/components/responses/SaveScreenOk"
         "400":
           $ref: "#/components/responses/BadRequestError"
+  /api/v1/screens/save-as:
+    post:
+      summary: Save screen-definition JSON to an explicit project-relative path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveScreenAsRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/SaveScreenOk"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
 
 components:
   responses:
@@ -160,3 +174,15 @@ components:
         - saved_path
     ScreenDefinition:
       $ref: "../schemas/screen-definition.schema.json"
+    SaveScreenAsRequest:
+      type: object
+      properties:
+        relative_path:
+          type: string
+          description: Project-relative save path restricted to config/screens/*.screen.json.
+          example: config/screens/custom/my-screen.screen.json
+        screen:
+          $ref: "#/components/schemas/ScreenDefinition"
+      required:
+        - relative_path
+        - screen

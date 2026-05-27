@@ -40,6 +40,12 @@ struct ErrorMapRequest {
     error: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct SaveScreenAsRequest {
+    relative_path: String,
+    screen: serde_json::Value,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 struct SaveScreenResponse {
     saved_path: String,
@@ -194,6 +200,50 @@ fn handle_builder_request_with_project_root(
         };
     }
 
+    if request.method == "POST" && request.path_without_query() == "/api/v1/screens/save-as" {
+        let payload: SaveScreenAsRequest = match serde_json::from_str(&request.body) {
+            Ok(value) => value,
+            Err(error) => {
+                return BuilderHttpResponse::json(
+                    400,
+                    error_json(&format!("invalid save-as request JSON: {error}")),
+                );
+            }
+        };
+
+        if let Err(message) = validate_screen_definition_schema(&payload.screen) {
+            return BuilderHttpResponse::json(400, error_json(&message));
+        }
+
+        let absolute_path = match resolve_save_as_path(project_root, &payload.relative_path) {
+            Ok(path) => path,
+            Err(message) => return BuilderHttpResponse::json(400, error_json(&message)),
+        };
+
+        if let Some(parent) = absolute_path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                return BuilderHttpResponse::json(500, error_json(&error.to_string()));
+            }
+        }
+
+        let normalized = match serde_json::to_string_pretty(&payload.screen) {
+            Ok(value) => value,
+            Err(error) => return BuilderHttpResponse::json(500, error_json(&error.to_string())),
+        };
+
+        if let Err(error) = fs::write(&absolute_path, normalized + "\n") {
+            return BuilderHttpResponse::json(500, error_json(&error.to_string()));
+        }
+
+        let response = SaveScreenResponse {
+            saved_path: payload.relative_path,
+        };
+        return match serde_json::to_string(&response) {
+            Ok(body) => BuilderHttpResponse::json(200, body),
+            Err(error) => BuilderHttpResponse::json(500, error_json(&error.to_string())),
+        };
+    }
+
     if let Some(screen_id) = screen_id_from_path(request.path_without_query()) {
         if !is_valid_screen_id(screen_id) {
             return BuilderHttpResponse::json(400, error_json("invalid screen id"));
@@ -323,6 +373,40 @@ fn screen_file_path(project_root: &Path, screen_id: &str) -> PathBuf {
         .join("config")
         .join("screens")
         .join(format!("{}.screen.json", screen_id))
+}
+
+fn resolve_save_as_path(project_root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    if relative_path.trim().is_empty() {
+        return Err("relative_path is required".to_string());
+    }
+
+    if relative_path.contains('\\') {
+        return Err("relative_path must use '/' separators".to_string());
+    }
+
+    if !relative_path.starts_with("config/screens/") {
+        return Err("relative_path must start with config/screens/".to_string());
+    }
+
+    if !relative_path.ends_with(".screen.json") {
+        return Err("relative_path must end with .screen.json".to_string());
+    }
+
+    let path = Path::new(relative_path);
+    if path.is_absolute() {
+        return Err("relative_path must be a project-relative path".to_string());
+    }
+
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            _ => {
+                return Err("relative_path contains invalid path traversal".to_string());
+            }
+        }
+    }
+
+    Ok(project_root.join(path))
 }
 
 fn error_json(message: &str) -> String {
@@ -693,6 +777,52 @@ mod tests {
             .as_str()
             .expect("error")
             .contains("screen definition schema invalid"));
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_save_as_writes_requested_relative_path() {
+        let project_root = test_project_root("builder_api_save_as");
+        let request = BuilderHttpRequest::new(
+            "POST",
+            "/api/v1/screens/save-as",
+            r#"{"relative_path":"config/screens/custom/my-screen.screen.json","screen":{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock Main Screen","canvas_width":1280,"canvas_height":720,"objects":[]}}"#,
+        );
+
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+        let saved_path = project_root
+            .join("config")
+            .join("screens")
+            .join("custom")
+            .join("my-screen.screen.json");
+
+        assert_eq!(200, response.status_code);
+        assert_eq!(
+            Some("config/screens/custom/my-screen.screen.json"),
+            payload["saved_path"].as_str()
+        );
+        assert!(saved_path.exists());
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_save_as_rejects_path_traversal() {
+        let project_root = test_project_root("builder_api_save_as_traversal");
+        let request = BuilderHttpRequest::new(
+            "POST",
+            "/api/v1/screens/save-as",
+            r#"{"relative_path":"config/screens/../outside.screen.json","screen":{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock Main Screen","canvas_width":1280,"canvas_height":720,"objects":[]}}"#,
+        );
+
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(400, response.status_code);
+        assert!(payload["error"]
+            .as_str()
+            .expect("error")
+            .contains("relative_path contains invalid path traversal"));
         let _ = std::fs::remove_dir_all(project_root);
     }
 }

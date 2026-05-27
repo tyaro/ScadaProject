@@ -199,6 +199,21 @@ test('loads and saves screen-definition via builder api', async ({ page }) => {
 
   await page.getByTestId('save-project-screen-button').dispatchEvent('click')
   await expect(page.getByTestId('io-status')).toContainText('Saved to config/screens/mock-main.screen.json')
+
+  await page.route('**/api/v1/screens/save-as', async (route) => {
+    const payload = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        saved_path: String(payload.relative_path ?? 'config/screens/fallback.screen.json'),
+      }),
+    })
+  })
+
+  await page.getByTestId('save-as-path-field').fill('config/screens/custom/from-ui.screen.json')
+  await page.getByTestId('save-as-project-screen-button').click()
+  await expect(page.getByTestId('io-status')).toContainText('Saved to config/screens/custom/from-ui.screen.json')
 })
 
 test('blocks project save when screen_id is invalid', async ({ page }) => {
@@ -222,4 +237,29 @@ test('blocks project save when screen_id is invalid', async ({ page }) => {
   await page.getByTestId('load-project-screen-button').click()
   await expect(page.getByTestId('io-status')).toContainText('Project I/O failed: screen_id must match [A-Za-z0-9_-]')
   await expect(screenApiCallCount).toBe(0)
+})
+
+test('blocks save-as when relative_path is invalid', async ({ page }) => {
+  let saveAsApiCallCount = 0
+  await page.route('**/api/v1/screens/save-as', async (route) => {
+    saveAsApiCallCount += 1
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'unexpected call' }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('save-as-path-field').fill('../outside.screen.json')
+
+  await expect(page.getByTestId('save-as-path-validation-message')).toContainText(
+    'relative_path must match config/screens/*.screen.json'
+  )
+  await expect(page.getByTestId('save-as-project-screen-button')).toBeDisabled()
+
+  await page.getByTestId('use-screen-id-path-button').click()
+  await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/mock-main.screen.json')
+  await expect(page.getByTestId('save-as-project-screen-button')).toBeEnabled()
+  await expect(saveAsApiCallCount).toBe(0)
 })

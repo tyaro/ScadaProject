@@ -227,6 +227,13 @@ button:focus {
   margin-top: 12px;
 }
 
+.project-io-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .inline-error {
   margin: 10px 0 0;
   color: var(--bad);

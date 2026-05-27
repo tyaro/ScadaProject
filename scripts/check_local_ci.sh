@@ -39,9 +39,12 @@ paths = doc.fetch("paths")
 raise "missing /health" unless paths.key?("/health")
 raise "missing /api/v1/errors/map" unless paths.key?("/api/v1/errors/map")
 raise "missing /api/v1/screens/{screen_id}" unless paths.key?("/api/v1/screens/{screen_id}")
+raise "missing /api/v1/screens/save-as" unless paths.key?("/api/v1/screens/save-as")
 screen = paths.fetch("/api/v1/screens/{screen_id}")
 raise "missing GET on /api/v1/screens/{screen_id}" unless screen.key?("get")
 raise "missing PUT on /api/v1/screens/{screen_id}" unless screen.key?("put")
+save_as = paths.fetch("/api/v1/screens/save-as")
+raise "missing POST on /api/v1/screens/save-as" unless save_as.key?("post")
 '
 
 echo "== runtime-ui check =="
