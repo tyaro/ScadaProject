@@ -260,3 +260,68 @@ test('shows error when control command fails', async ({ page }) => {
   // Initial snapshot only. Failure path should not perform an extra refresh.
   expect(projectionCalls).toBe(1)
 })
+
+test('updates displayed values after manual refresh', async ({ page }) => {
+  let projectionCalls = 0
+  const firstSnapshot = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.temperature.001'
+            ? { ...binding, value: 21.5, sequence: 20 }
+            : binding
+        ),
+      },
+    ],
+  }
+  const secondSnapshot = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.temperature.001'
+            ? { ...binding, value: 24.2, sequence: 21 }
+            : binding
+        ),
+      },
+    ],
+  }
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    const body = projectionCalls <= 1 ? firstSnapshot : secondSnapshot
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText(/21\.5/)).toBeVisible()
+
+  const refreshResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/screens/projection') &&
+      response.request().method() === 'POST'
+  )
+  await page.getByRole('button', { name: 'Refresh projection' }).click()
+  await refreshResponse
+
+  await expect(page.getByText(/24\.2/)).toBeVisible()
+  expect(projectionCalls).toBeGreaterThanOrEqual(2)
+})
