@@ -8,19 +8,7 @@ paths:
       summary: Runtime health check
       responses:
         "200":
-          description: Runtime is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  service:
-                    type: string
-                  status:
-                    type: string
-                required:
-                  - service
-                  - status
+          $ref: "#/components/responses/HealthOk"
   /api/v1/tags/snapshot:
     post:
       summary: Fetch latest tag snapshot for a screen or tag list
@@ -42,23 +30,7 @@ paths:
                 - tag_ids
       responses:
         "200":
-          description: Latest tag values
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  values:
-                    type: array
-                    items:
-                      $ref: "../schemas/tag-value.schema.json"
-                  missing_tag_ids:
-                    type: array
-                    items:
-                      type: string
-                required:
-                  - values
-                  - missing_tag_ids
+          $ref: "#/components/responses/TagSnapshotOk"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -79,55 +51,7 @@ paths:
                   description: Local screen definition path used by the phase 1 preview runtime.
       responses:
         "200":
-          description: Current screen object projection
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  screen_id:
-                    type: string
-                  project_id:
-                    type: string
-                  object_states:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        object_id:
-                          type: string
-                        svg_asset_id:
-                          type: string
-                        bindings:
-                          type: array
-                          items:
-                            type: object
-                            properties:
-                              key:
-                                type: string
-                              tag_id:
-                                type: string
-                              value: {}
-                              quality:
-                                type: string
-                                nullable: true
-                              sequence:
-                                type: integer
-                                nullable: true
-                            required:
-                              - key
-                              - tag_id
-                              - value
-                              - quality
-                              - sequence
-                      required:
-                        - object_id
-                        - svg_asset_id
-                        - bindings
-                required:
-                  - screen_id
-                  - project_id
-                  - object_states
+          $ref: "#/components/responses/ScreenProjectionOk"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -156,11 +80,7 @@ paths:
                 - values
       responses:
         "202":
-          description: Driver values were accepted for latest-value cache ingestion
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DriverValuesIngestResponse"
+          $ref: "#/components/responses/DriverValuesAccepted"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -178,43 +98,7 @@ paths:
               $ref: "../schemas/control-command.schema.json"
       responses:
         "202":
-          description: Control command accepted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  command:
-                    $ref: "../schemas/control-command.schema.json"
-                  driver_request:
-                    type: object
-                    properties:
-                      command_id:
-                        type: string
-                      tag_id:
-                        type: string
-                      value:
-                        type: string
-                    required:
-                      - command_id
-                      - tag_id
-                      - value
-                  driver_response:
-                    type: object
-                    properties:
-                      command_id:
-                        type: string
-                      accepted:
-                        type: boolean
-                      message:
-                        type: string
-                    required:
-                      - command_id
-                      - accepted
-                      - message
-                required:
-                  - command
-                  - driver_request
+          $ref: "#/components/responses/ControlCommandAccepted"
         "400":
           $ref: "#/components/responses/BadRequestError"
         "401":
@@ -226,6 +110,36 @@ paths:
 
 components:
   responses:
+    HealthOk:
+      description: Runtime is healthy
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/HealthResponse"
+    TagSnapshotOk:
+      description: Latest tag values
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TagSnapshotResponse"
+    ScreenProjectionOk:
+      description: Current screen object projection
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ScreenProjectionResponse"
+    DriverValuesAccepted:
+      description: Driver values were accepted for latest-value cache ingestion
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/DriverValuesIngestResponse"
+    ControlCommandAccepted:
+      description: Control command accepted
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ControlCommandAcceptedResponse"
     BadRequestError:
       description: Invalid request
       content:
@@ -257,6 +171,118 @@ components:
           schema:
             $ref: "#/components/schemas/DriverValuesPublishFailureResponse"
   schemas:
+    HealthResponse:
+      type: object
+      properties:
+        service:
+          type: string
+        status:
+          type: string
+      required:
+        - service
+        - status
+    TagSnapshotResponse:
+      type: object
+      properties:
+        values:
+          type: array
+          items:
+            $ref: "../schemas/tag-value.schema.json"
+        missing_tag_ids:
+          type: array
+          items:
+            type: string
+      required:
+        - values
+        - missing_tag_ids
+    ObjectBindingState:
+      type: object
+      properties:
+        key:
+          type: string
+        tag_id:
+          type: string
+        value: {}
+        quality:
+          type: string
+          nullable: true
+        sequence:
+          type: integer
+          nullable: true
+      required:
+        - key
+        - tag_id
+        - value
+        - quality
+        - sequence
+    ScreenObjectState:
+      type: object
+      properties:
+        object_id:
+          type: string
+        svg_asset_id:
+          type: string
+        bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectBindingState"
+      required:
+        - object_id
+        - svg_asset_id
+        - bindings
+    ScreenProjectionResponse:
+      type: object
+      properties:
+        screen_id:
+          type: string
+        project_id:
+          type: string
+        object_states:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScreenObjectState"
+      required:
+        - screen_id
+        - project_id
+        - object_states
+    ControlCommandDriverRequest:
+      type: object
+      properties:
+        command_id:
+          type: string
+        tag_id:
+          type: string
+        value:
+          type: string
+      required:
+        - command_id
+        - tag_id
+        - value
+    ControlCommandDriverResponse:
+      type: object
+      properties:
+        command_id:
+          type: string
+        accepted:
+          type: boolean
+        message:
+          type: string
+      required:
+        - command_id
+        - accepted
+        - message
+    ControlCommandAcceptedResponse:
+      type: object
+      properties:
+        command:
+          $ref: "../schemas/control-command.schema.json"
+        driver_request:
+          $ref: "#/components/schemas/ControlCommandDriverRequest"
+        driver_response:
+          $ref: "#/components/schemas/ControlCommandDriverResponse"
+      required:
+        - command
+        - driver_request
     ErrorResponse:
       type: object
       properties:

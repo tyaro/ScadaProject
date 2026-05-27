@@ -203,6 +203,7 @@ Runtime API境界テストを強化
   - 開発計画書のフェーズ1サマリにエラー契約固定化とUI回帰検証の完了内容を反映
   - `contracts/openapi/runtime.yaml` に `components.responses` を追加し、`400/401/409/502` の共通エラー応答を `$ref` 化
   - `driver-values` の `502` は `DriverValuesPublishFailed` responseとして共通運用へ統合
+  - `200/202` 成功応答も `components.responses` / `components.schemas` へ段階移行し、`Health` / `Snapshot` / `Projection` / `ControlCommandAccepted` を共通化
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -308,7 +309,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `runtime.yaml` の成功応答（`200/202`）についても `components.responses` / `components.schemas` の再利用方針を整理し、重複定義を段階的に削減する。
+1. OpenAPIの共通応答コンポーネント運用ルールを `docs/scada_basic_design.md` または専用API運用メモへ追記し、追加API時のレビュー観点を固定化する。
 2. フェーズ1完了条件に対する未充足項目（SVG modify rulesの詳細、操作ログ最小保存の実動確認）を洗い出し、テスト観点を具体化する。
 
 ## フェーズ0完了条件棚卸し
