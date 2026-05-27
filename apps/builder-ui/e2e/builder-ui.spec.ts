@@ -30,6 +30,8 @@ test('maps known coded condition error and shows structured response', async ({ 
   await expect(page.getByTestId('object-field')).toHaveValue('pump-001')
   await expect(page.getByTestId('property-field')).toHaveValue('color')
   await expect(page.getByTestId('property-field')).toBeFocused()
+  await expect(page.getByTestId('condition-op-field')).toHaveValue('any')
+  await expect(page.getByTestId('condition-values-field')).toHaveValue('lt:18,gt:28')
 })
 
 test('keeps fallback behavior for unknown codes', async ({ page }) => {
@@ -59,4 +61,6 @@ test('keeps fallback behavior for unknown codes', async ({ page }) => {
   await expect(page.getByTestId('focus-status-row')).toContainText('Focused property editor for text')
   await expect(page.getByTestId('object-field')).toHaveValue('valve-002')
   await expect(page.getByTestId('property-field')).toHaveValue('text')
+  await expect(page.getByTestId('condition-op-field')).toHaveValue('eq')
+  await expect(page.getByTestId('condition-value-field')).toHaveValue('')
 })

@@ -1,13 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte'
-
-  type ErrorMappingResponse = {
-    code: string | null
-    path: string | null
-    detail: string | null
-    user_message: string
-    known_code: boolean
-  }
+  import {
+    isBuilderErrorMapResponse,
+    isBuilderErrorResponse,
+    type BuilderErrorMapRequest,
+    type BuilderErrorMapResponse,
+  } from './contracts/builderApi'
 
   type ParsedTargetPath = {
     objectId: string | null
@@ -20,6 +18,11 @@
     bindingKey: string
     trueValue: string
     falseValue: string
+    conditionOp: string
+    conditionValue: string
+    conditionMin: string
+    conditionMax: string
+    conditionValues: string
   }
 
   type ScreenObjectForm = {
@@ -34,6 +37,7 @@
   const sampleUnknownError =
     "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state"
   const propertyOptions = ['visible', 'color', 'text']
+  const conditionOpOptions = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'any', 'all']
   const initialScreenObjects: ScreenObjectForm[] = [
     {
       objectId: 'pump-001',
@@ -48,12 +52,22 @@
           bindingKey: 'state',
           trueValue: 'true',
           falseValue: 'false',
+          conditionOp: 'eq',
+          conditionValue: 'true',
+          conditionMin: '',
+          conditionMax: '',
+          conditionValues: '',
         },
         {
           property: 'color',
           bindingKey: 'value',
           trueValue: '#cc3333',
           falseValue: '#3cb371',
+          conditionOp: 'any',
+          conditionValue: '',
+          conditionMin: '',
+          conditionMax: '',
+          conditionValues: 'lt:18,gt:28',
         },
       ],
     },
@@ -69,6 +83,11 @@
           bindingKey: 'value',
           trueValue: 'NORMAL',
           falseValue: 'CHECK',
+          conditionOp: 'all',
+          conditionValue: '',
+          conditionMin: '',
+          conditionMax: '',
+          conditionValues: 'gte:20,lte:26',
         },
       ],
     },
@@ -77,7 +96,7 @@
   let inputError = $state(sampleKnownError)
   let loading = $state(false)
   let apiError = $state('')
-  let response = $state<ErrorMappingResponse | null>(null)
+  let response = $state<BuilderErrorMapResponse | null>(null)
   let parsedTarget = $state<ParsedTargetPath>({ objectId: null, property: null, valid: false })
   let focusStatus = $state('No parsed target yet')
   let screenObjects = $state<ScreenObjectForm[]>(structuredClone(initialScreenObjects))
@@ -91,6 +110,11 @@
     bindingKey: 'value',
     trueValue: '',
     falseValue: '',
+    conditionOp: 'eq',
+    conditionValue: '',
+    conditionMin: '',
+    conditionMax: '',
+    conditionValues: '',
   })
 
   const emptyObject = (objectId: string): ScreenObjectForm => ({
@@ -109,6 +133,10 @@
   function selectedRule(): ModifyRuleForm {
     const object = selectedObject()
     return object.modifyRules[selectedRuleIndex]
+  }
+
+  function usesSingleValueOp(op: string): boolean {
+    return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'].includes(op)
   }
 
   function selectObject(index: number) {
@@ -202,10 +230,11 @@
     apiError = ''
 
     try {
+      const payload: BuilderErrorMapRequest = { error: inputError }
       const httpResponse = await fetch('/api/v1/errors/map', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: inputError }),
+        body: JSON.stringify(payload),
       })
 
       if (!httpResponse.ok) {
@@ -213,7 +242,12 @@
         throw new Error(errorBody)
       }
 
-      response = (await httpResponse.json()) as ErrorMappingResponse
+      const mapped = await httpResponse.json()
+      if (!isBuilderErrorMapResponse(mapped)) {
+        throw new Error('builder api returned invalid map response contract')
+      }
+
+      response = mapped
       await focusParsedTarget(response.path)
     } catch (error) {
       response = null
@@ -232,8 +266,11 @@
 
   async function parseError(httpResponse: Response): Promise<string> {
     try {
-      const body = (await httpResponse.json()) as { error?: string }
-      return body.error ?? `builder api ${httpResponse.status}`
+      const body = await httpResponse.json()
+      if (isBuilderErrorResponse(body)) {
+        return body.error
+      }
+      return `builder api ${httpResponse.status}`
     } catch {
       return `builder api ${httpResponse.status}`
     }
@@ -430,6 +467,61 @@
             <span>False Value</span>
             <input bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].falseValue} type="text" />
           </label>
+        </div>
+
+        <div class="condition-editor" data-testid="condition-editor">
+          <h4>Condition</h4>
+
+          <label class="field">
+            <span>Operator</span>
+            <select
+              data-testid="condition-op-field"
+              bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].conditionOp}
+            >
+              {#each conditionOpOptions as op}
+                <option value={op}>{op}</option>
+              {/each}
+            </select>
+          </label>
+
+          {#if usesSingleValueOp(selectedRule().conditionOp)}
+            <label class="field">
+              <span>Value</span>
+              <input
+                data-testid="condition-value-field"
+                bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].conditionValue}
+                type="text"
+              />
+            </label>
+          {:else if selectedRule().conditionOp === 'between'}
+            <div class="binding-grid two-up">
+              <label class="field">
+                <span>Min</span>
+                <input
+                  data-testid="condition-min-field"
+                  bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].conditionMin}
+                  type="text"
+                />
+              </label>
+              <label class="field">
+                <span>Max</span>
+                <input
+                  data-testid="condition-max-field"
+                  bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].conditionMax}
+                  type="text"
+                />
+              </label>
+            </div>
+          {:else if selectedRule().conditionOp === 'in' || selectedRule().conditionOp === 'all' || selectedRule().conditionOp === 'any'}
+            <label class="field">
+              <span>Values / Clauses</span>
+              <input
+                data-testid="condition-values-field"
+                bind:value={screenObjects[selectedObjectIndex].modifyRules[selectedRuleIndex].conditionValues}
+                type="text"
+              />
+            </label>
+          {/if}
         </div>
 
         <div class="result-row compact" data-testid="editor-selection-row">

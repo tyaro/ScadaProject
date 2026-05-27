@@ -487,6 +487,8 @@ Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_co
 
 初期段階では `mock-main.screen.json` 相当の最小 Screen Object Editor を置き、`path` から抽出した `object` / `property` を対応する object フォームと modify rule フォームへ反映する。より具体的な `property` がある場合は rule property 入力を優先してフォーカスし、object が未登録なら草稿 object をその場で追加して編集先を失わないようにする。
 
+この最小 Editor では、rule の condition 本体入力として `op/value/min/max/values` を持ち、`between` や `in` など演算子ごとに必要項目を切り替えて編集できるものとする。
+
 #### Builder API エラーマッピングHTTPエンドポイント
 
 Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。
@@ -501,6 +503,8 @@ Builder UI から直接利用できる最小連携点として、Builder API は
 ローカル同梱サービスでは、Builder API を `--serve --addr 127.0.0.1:18110` で常駐起動し、Builder UI から直接このエンドポイントを利用できるようにする。
 
 Builder API のHTTP契約は [contracts/openapi/builder.yaml](contracts/openapi/builder.yaml) を正本とし、`/health` と `POST /api/v1/errors/map` の request/response はこの OpenAPI に従って管理する。
+
+Builder UI 側では `apps/builder-ui/src/contracts/builderApi.ts` を契約型の取り込み窓口とし、request/response の shape guard により `POST /api/v1/errors/map` の入出力を実行時にも検証する。
 
 実装側では、少なくとも `/health` と `POST /api/v1/errors/map` のステータスコード、`application/json`、必須フィールド形を境界テストで固定し、OpenAPI と実装のドリフトを早期に検出する。
 

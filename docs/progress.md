@@ -235,6 +235,8 @@ Runtime API境界テストを強化
   - `apps/builder-ui` にSvelteベースの最小Builder UIを追加し、`POST /api/v1/errors/map` を呼び出して `known_code` / `user_message` / `path` を表示できるようにした
   - `apps/builder-ui` の Playwright 回帰テストで、既知コード時の定型表示と未知コード時のフォールバック表示を固定化した
   - `apps/builder-ui` で `path=object=... property=...` を機械解釈し、`mock-main.screen.json` 相当の最小 Screen Object Editor の object/rule フォームへ自動フォーカスする導線を追加した
+  - `apps/builder-ui` の最小 Screen Object Editor に modify rule の condition 本体入力（`op/value/min/max/values`）を追加し、エラー導線のまま rule 修正を始められるようにした
+  - Builder UI の Builder API 呼び出しを `apps/builder-ui/src/contracts/builderApi.ts` の契約型（request/response + shape guard）経由に変更し、`contracts/openapi/builder.yaml` と合わせた入出力を明示化した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -344,8 +346,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. Builder UI の最小 Screen Object Editor に、modify rule の condition 本体入力を追加し、Builder API のエラーマッピング結果と同じ rule をその場で修正できるようにする。
-2. `contracts/openapi/builder.yaml` を前提に、Builder UI 側の fetch 入出力型を契約由来の型へ寄せるか、契約差分チェック手順をローカルCIへ組み込む。
+1. Builder UI の condition 入力を JSON Schema/OpenAPI に合わせて双方向変換し、`mock-main.screen.json` 保存形式へ落とせる最小シリアライズを追加する。
+2. Builder API 契約ドリフト検出を強化するため、`contracts/openapi/builder.yaml` の shape 検証をローカルCI手順へ統合する。
 
 ## フェーズ0完了条件棚卸し
 
