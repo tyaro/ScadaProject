@@ -33,6 +33,10 @@
     error?: string
   }
 
+  type ErrorResponse = {
+    error?: string
+  }
+
   type RuntimeTagValue = {
     tag_id: string
     value: unknown
@@ -88,7 +92,7 @@
       })
 
       if (!response.ok) {
-        throw new Error(`projection ${response.status}`)
+        throw new Error(await responseErrorMessage(response, 'projection'))
       }
 
       projection = (await response.json()) as ScreenProjection
@@ -179,6 +183,15 @@
     client.on('message', (topic, payload) => {
       applyMqttDelta(projectId, topic, payload.toString())
     })
+  }
+
+  async function responseErrorMessage(response: Response, label: string): Promise<string> {
+    try {
+      const body = (await response.clone().json()) as ErrorResponse
+      return body.error ?? `${label} ${response.status}`
+    } catch {
+      return `${label} ${response.status}`
+    }
   }
 
   function applyMqttDelta(projectId: string, topic: string, payload: string) {

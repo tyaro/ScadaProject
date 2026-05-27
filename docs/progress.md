@@ -151,6 +151,7 @@
   - Stop操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
   - ControlCommand失敗時にエラー表示へ遷移することを回帰テストへ追加
   - projection取得失敗時にエラー表示とOffline表示へ遷移することを回帰テストへ追加
+  - projection取得失敗時にRuntime APIのJSON `error` 本文を表示するよう改善
   - 手動リフレッシュ操作後にprojection再取得で表示値が更新されることを回帰テストへ追加
   - MQTT delta受信相当イベント後に表示値とdelta状態が更新されることを回帰テストへ追加
   - 古いsequenceのMQTT deltaを破棄し、表示値を更新しないことを回帰テストへ追加
@@ -240,7 +241,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. `preview-runtime --snapshot-screen --mqtt-subscribe` のログ自動検証スクリプトをCI実行へ組み込む方針（実行条件/権限）を整理する。
-3. Runtime UIでprojection取得失敗時にRuntime APIのJSONエラー本文を表示できるよう改善する。
+3. Runtime UIでprojection取得失敗後に手動リフレッシュで復旧表示へ戻れることをE2Eで確認する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -272,6 +273,8 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 8 passed（projection取得失敗時の表示回帰テストを含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（projection失敗時のJSON `error` 表示改善後）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 8 passed（projection失敗時にJSON `error` 本文を表示）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）

@@ -289,7 +289,7 @@ test('shows error when projection fetch fails', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
-  await expect(page.getByText('projection 502')).toBeVisible()
+  await expect(page.getByText('tag server snapshot failed')).toBeVisible()
   await expect(page.getByText('Offline')).toBeVisible()
   await expect(page.getByText('mock-main')).toHaveCount(0)
   expect(projectionCalls).toBe(1)
