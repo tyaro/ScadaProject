@@ -946,6 +946,19 @@ fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
 mod tests {
     use super::*;
 
+    fn assert_json_error_response(response: &HttpResponse, expected_status: u16, expected_fragment: &str) {
+        assert_eq!(expected_status, response.status_code);
+        assert_eq!("application/json", response.content_type);
+
+        let body = serde_json::from_str::<serde_json::Value>(&response.body).expect("error json body");
+        let message = body
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .expect("error field");
+
+        assert!(message.contains(expected_fragment));
+    }
+
     fn tag_value(sequence: u64) -> TagValue {
         TagValue {
             tag_id: "mock.temperature.001".to_string(),
@@ -1090,8 +1103,38 @@ mod tests {
         )
         .with_header("authorization", "Bearer secret");
 
-        assert_eq!(401, api.handle(&unauthenticated).status_code);
+        let unauthorized = api.handle(&unauthenticated);
+
+        assert_json_error_response(&unauthorized, 401, "unauthorized");
         assert_eq!(200, api.handle(&authenticated).status_code);
+    }
+
+    #[test]
+    fn snapshot_endpoint_returns_json_error_for_invalid_payload() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new("POST", "/api/v1/tags/snapshot", r#"{"tag_ids":"broken"}"#);
+
+        let response = api.handle(&request);
+
+        assert_json_error_response(&response, 400, "tag_ids");
+    }
+
+    #[test]
+    fn driver_values_endpoint_returns_json_error_for_invalid_payload() {
+        let mut api = TagServerApi::phase0_mock();
+        let request = HttpRequest::new("POST", "/api/v1/driver-values", r#"{"project_id":"demo"}"#);
+
+        let response = api.handle(&request);
+
+        assert_json_error_response(&response, 400, "values");
+    }
+
+    #[test]
+    fn api_returns_json_error_for_unknown_route() {
+        let mut api = TagServerApi::phase0_mock();
+        let response = api.handle(&HttpRequest::new("POST", "/api/v1/unknown", "{}"));
+
+        assert_json_error_response(&response, 404, "not found");
     }
 
     #[test]

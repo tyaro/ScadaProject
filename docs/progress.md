@@ -163,6 +163,8 @@ Runtime API境界テストを強化
   - `control-command` / `projection` の主要エラー応答（`400/401/404/502`）で `application/json` + `{"error":"..."}` 形式を共通アサートで固定化
   - Runtime APIの未知ルート（`404`）とprojection認証エラー（`401`）のJSON error本文互換性テストを追加
   - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
+  - Tag Serverの `snapshot` / `driver-values` でも `400/401/404` のJSON error本文互換性テストを追加
+  - OpenAPIの `snapshot` / `driver-values` にも `ErrorResponse` を適用し、`driver-values` の `502` を `DriverValuesPublishFailureResponse` として明示
   - `control-command` / `projection` の主要エラー応答（`400/401/404/502`）で `application/json` + `{"error":"..."}` 形式を共通アサートで固定化
   - Runtime APIの未知ルート（`404`）とprojection認証エラー（`401`）について、JSON error本文互換性テストを追加
   - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
@@ -300,6 +302,7 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. `runtime.yaml` の他エンドポイント（`/api/v1/tags/snapshot`, `/api/v1/driver-values`）にもErrorResponse schema適用方針を整理し、実装と契約の整合差分を洗い出す。
+2. Runtime UI E2EでTag Server由来の `driver-values` publish失敗（`502 + publish_errors`）時の表示方針を決め、必要ならAPIプロキシ層のエラーハンドリングを拡張する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -365,6 +368,8 @@ Runtime API境界テストを強化
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
 - `cargo test -p preview-runtime`: 成功（37 tests、`control-command` / `projection` のJSON error本文互換性アサート追加を含む）
 - `cargo test -p preview-runtime -- --ignored`: 成功（20 tests、境界系bind依存テストの回帰なし）
+- `cargo test -p tag-server`: 成功（12 tests + integration 2 tests、`snapshot` / `driver-values` / unknown route のJSON error本文互換性テスト追加を含む）
+- `cargo test -p preview-runtime`: 成功（37 tests、Tag Server側契約強化後の回帰なし）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p preview-runtime`: 成功（Tag Server snapshot不正JSON/空応答の通常テスト確認、bind依存テストはignored）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server snapshot不正JSON/空応答のbind依存境界テストを含む6件）

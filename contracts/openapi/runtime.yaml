@@ -61,8 +61,16 @@ paths:
                   - missing_tag_ids
         "400":
           description: Invalid snapshot request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Local API token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/v1/screens/projection:
     post:
       summary: Fetch the current screen projection for the monitoring UI
@@ -172,31 +180,25 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  received:
-                    type: integer
-                    minimum: 0
-                  ingested:
-                    type: integer
-                    minimum: 0
-                  stale:
-                    type: integer
-                    minimum: 0
-                  published:
-                    type: integer
-                    minimum: 0
-                required:
-                  - received
-                  - ingested
-                  - stale
-                  - published
+                $ref: "#/components/schemas/DriverValuesIngestResponse"
         "400":
           description: Invalid driver value payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "401":
           description: Local API token is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: Driver values were ingested, but MQTT publish failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriverValuesPublishFailureResponse"
   /api/v1/control-commands:
     post:
       summary: Request a tag write/control command
@@ -279,3 +281,34 @@ components:
           type: string
       required:
         - error
+    DriverValuesIngestResponse:
+      type: object
+      properties:
+        received:
+          type: integer
+          minimum: 0
+        ingested:
+          type: integer
+          minimum: 0
+        stale:
+          type: integer
+          minimum: 0
+        published:
+          type: integer
+          minimum: 0
+      required:
+        - received
+        - ingested
+        - stale
+        - published
+    DriverValuesPublishFailureResponse:
+      allOf:
+        - $ref: "#/components/schemas/DriverValuesIngestResponse"
+        - type: object
+          properties:
+            publish_errors:
+              type: array
+              items:
+                type: string
+          required:
+            - publish_errors
