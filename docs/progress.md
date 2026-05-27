@@ -197,6 +197,8 @@ Runtime API境界テストを強化
   - MQTT delta payloadが不正JSONの場合に `MQTT` 種別の `role="alert"` を表示し、表示値を保持することを回帰テストへ追加
   - MQTT delta topicがbinding tagと一致しない場合に表示値とdelta状態を更新せず、エラー通知も出さないことを回帰テストへ追加
   - テスト用フックに `applyDeltaRaw` を追加し、不正payloadシナリオを再現可能にした
+  - APIエラー本文に `publish_errors` 配列のみがある場合、先頭エラーを表示するよう改善
+  - `control-commands` が `502` + `publish_errors` を返すケースのUI回帰テストを追加
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -304,6 +306,7 @@ Runtime API境界テストを強化
 
 1. `runtime.yaml` の他エンドポイント（`/api/v1/tags/snapshot`, `/api/v1/driver-values`）にもErrorResponse schema適用方針を整理し、実装と契約の整合差分を洗い出す。
 2. Runtime UI E2EでTag Server由来の `driver-values` publish失敗（`502 + publish_errors`）時の表示方針を決め、必要ならAPIプロキシ層のエラーハンドリングを拡張する。
+3. Runtime UIのエラー表示文言を契約ドキュメント化し、`error` / `publish_errors` / 非JSON本文での優先順位を明文化する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -362,6 +365,8 @@ Runtime API境界テストを強化
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（上部表示とbinding tableの値一貫性確認を含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（MQTT エラー経路E2E追加後、テストフック `applyDeltaRaw` 追加後）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 16 passed（MQTT 不正payload/topic不一致シナリオを含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（`publish_errors` を含むAPIエラー本文解釈の追加後）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 17 passed（`control-commands` の `502 + publish_errors` 表示回帰を含む）
 - `scripts/check_local_ci.sh`: 成功（標準チェック、bind依存チェックはskip）
 - `cargo test -p preview-runtime -- --ignored`: 成功（bind依存Runtime API境界テスト4件）
 - `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）

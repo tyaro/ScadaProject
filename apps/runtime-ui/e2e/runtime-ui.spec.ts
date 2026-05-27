@@ -287,6 +287,34 @@ test('falls back to status when control command error body is not json', async (
   await expect(page.getByText('command 502')).toBeVisible()
 })
 
+test('shows first publish error when control command error body has publish_errors', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        publish_errors: ['mqtt broker unavailable', 'publish timeout'],
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Stopped')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByRole('alert')).toContainText('Command')
+  await expect(page.getByText('mqtt broker unavailable')).toBeVisible()
+  await expect(page.getByText('command 502')).toHaveCount(0)
+})
+
 test('falls back to accepted when control command success body is empty', async ({ page }) => {
   let commandIssued = false
   let projectionCalls = 0

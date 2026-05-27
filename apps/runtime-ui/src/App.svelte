@@ -35,6 +35,7 @@
 
   type ErrorResponse = {
     error?: string
+    publish_errors?: string[]
   }
 
   type RuntimeTagValue = {
@@ -194,7 +195,13 @@
   async function responseErrorMessage(response: Response, label: string): Promise<string> {
     try {
       const body = (await response.clone().json()) as ErrorResponse
-      return body.error ?? `${label} ${response.status}`
+      if (body.error) {
+        return body.error
+      }
+      if (Array.isArray(body.publish_errors) && body.publish_errors.length > 0) {
+        return body.publish_errors[0]
+      }
+      return `${label} ${response.status}`
     } catch {
       return `${label} ${response.status}`
     }
