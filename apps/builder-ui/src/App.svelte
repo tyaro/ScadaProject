@@ -12,6 +12,7 @@
     type SerializedScreenObject,
     type ScreenModifyRuleCondition,
   } from './contracts/builderApi'
+  import { hasTauriFileDialogBridge, pickScreenRelativePath } from './tauriFileDialog'
 
   type ParsedTargetPath = {
     objectId: string | null
@@ -533,6 +534,31 @@
     }
   }
 
+  async function pickSaveAsPathViaTauri() {
+    const initialPath = previewRequestPath() ?? projectScreenPath(screenId)
+    try {
+      const picked = await pickScreenRelativePath(initialPath)
+      if (picked === null) {
+        ioStatus = 'Tauri file dialog unavailable: running in web mode'
+        return
+      }
+
+      if (picked.cancelled) {
+        ioStatus = 'File selection cancelled'
+        return
+      }
+
+      if (!picked.relative_path || !isSaveAsPathValid(picked.relative_path)) {
+        throw new Error('invalid relative_path from tauri picker')
+      }
+
+      saveAsRelativePath = picked.relative_path
+      ioStatus = `Selected ${picked.relative_path}`
+    } catch (error) {
+      ioStatus = error instanceof Error ? `Path selection failed: ${error.message}` : 'Path selection failed'
+    }
+  }
+
   function applyLoadedScreenDefinition(parsed: SerializedScreenDefinition) {
     schemaVersion = parsed.schema_version
     screenId = parsed.screen_id
@@ -906,6 +932,9 @@
           <input data-testid="save-as-path-field" bind:value={saveAsRelativePath} type="text" />
         </label>
         <div class="project-io-actions">
+          <button class="secondary" type="button" data-testid="pick-save-as-path-button" onclick={pickSaveAsPathViaTauri}>
+            {hasTauriFileDialogBridge() ? 'Pick via Tauri' : 'Pick via Tauri (web fallback)'}
+          </button>
           <button class="secondary" type="button" data-testid="use-screen-id-path-button" onclick={syncSaveAsPathToScreenId}>
             Use screen_id path
           </button>

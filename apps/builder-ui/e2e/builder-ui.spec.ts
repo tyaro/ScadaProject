@@ -282,3 +282,34 @@ test('blocks save-as when relative_path is invalid', async ({ page }) => {
   await expect(page.getByTestId('preview-runtime-button')).toBeEnabled()
   await expect(saveAsApiCallCount).toBe(0)
 })
+
+test('uses tauri picker result for save-as path', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async (command: string, args: Record<string, unknown>) => {
+          if (command !== 'pick_screen_relative_path') {
+            throw new Error(`unexpected command: ${command}`)
+          }
+
+          if (typeof args.initial_path !== 'string') {
+            throw new Error('initial_path must be string')
+          }
+
+          return {
+            cancelled: false,
+            relative_path: 'config/screens/picked/by-tauri.screen.json',
+          }
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByTestId('pick-save-as-path-button')).toContainText('Pick via Tauri')
+  await page.getByTestId('pick-save-as-path-button').click()
+
+  await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/picked/by-tauri.screen.json')
+  await expect(page.getByTestId('io-status')).toContainText('Selected config/screens/picked/by-tauri.screen.json')
+})
