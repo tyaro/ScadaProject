@@ -1511,6 +1511,48 @@ mod tests {
         assert!(response.body.contains("screen definition error"));
     }
 
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_projection_accepts_bearer_and_forwards_auth_to_tag_server() {
+        let screen_path = write_test_screen_definition("projection-auth-forward");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/tags/snapshot", request.path);
+            assert_eq!(Some("Bearer secret"), request.header("authorization"));
+
+            let response = RuntimeHttpResponse::json(
+                200,
+                r#"{"values":[{"tag_id":"mock.running.001","value":true,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:01Z","server_timestamp":"1970-01-01T00:00:01Z","sequence":3,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}],"missing_tag_ids":[]}"#
+                    .to_string(),
+            );
+            stream.write_all(&response.to_http_bytes()).expect("write");
+        });
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_token(Some("secret".to_string())),
+        )
+        .with_required_token(Some("secret".to_string()))
+        .with_default_screen_path(screen_path.clone());
+
+        let request = RuntimeHttpRequest::new("POST", "/api/v1/screens/projection", r#"{}"#)
+            .with_header("authorization", "Bearer secret");
+        let response = api.handle(&request);
+
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(200, response.status_code);
+        assert!(response.body.contains(r#""screen_id":"main""#));
+        assert!(response.body.contains(r#""value":true"#));
+    }
+
     fn write_test_screen_definition(name: &str) -> PathBuf {
         let screen_path = std::env::temp_dir().join(format!(
             "scada-preview-runtime-screen-{name}-{}.json",
