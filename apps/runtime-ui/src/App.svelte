@@ -125,12 +125,11 @@
           timeout_ms: 1000,
         }),
       })
-      const body = (await response.json()) as CommandResponse
-
       if (!response.ok) {
-        throw new Error(body.error ?? `command ${response.status}`)
+        throw new Error(await responseErrorMessage(response, 'command'))
       }
 
+      const body = (await response.json()) as CommandResponse
       commandMessage = `command ${body.command?.status ?? 'accepted'}`
       await loadProjection()
     } catch (error) {

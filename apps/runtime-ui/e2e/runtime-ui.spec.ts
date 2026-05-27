@@ -261,6 +261,30 @@ test('shows error when control command fails', async ({ page }) => {
   expect(projectionCalls).toBe(1)
 })
 
+test('falls back to status when control command error body is not json', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: 'text/plain',
+      body: 'bad gateway',
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Stopped')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByText('command 502')).toBeVisible()
+})
+
 test('shows error when projection fetch fails', async ({ page }) => {
   let projectionCalls = 0
 
@@ -293,6 +317,84 @@ test('shows error when projection fetch fails', async ({ page }) => {
   await expect(page.getByText('Offline')).toBeVisible()
   await expect(page.getByText('mock-main')).toHaveCount(0)
   expect(projectionCalls).toBe(1)
+})
+
+test('falls back to status when projection error body is not json', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'text/plain',
+      body: 'maintenance',
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByText('projection 503')).toBeVisible()
+  await expect(page.getByText('Offline')).toBeVisible()
+})
+
+test('recovers from projection fetch failure after manual refresh', async ({ page }) => {
+  let projectionCalls = 0
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    if (projectionCalls === 1) {
+      await route.fulfill({
+        status: 502,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: 'tag server snapshot failed',
+        }),
+      })
+      return
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('tag server snapshot failed')).toBeVisible()
+
+  const refreshResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/screens/projection') &&
+      response.request().method() === 'POST'
+  )
+  await page.getByRole('button', { name: 'Refresh projection' }).click()
+  await refreshResponse
+
+  await expect(page.getByText('tag server snapshot failed')).toHaveCount(0)
+  await expect(page.getByText('mock-main')).toBeVisible()
+  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('Online')).toBeVisible()
+  expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
 
 test('updates displayed values after manual refresh', async ({ page }) => {
