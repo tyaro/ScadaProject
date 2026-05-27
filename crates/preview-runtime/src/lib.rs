@@ -1512,6 +1512,63 @@ mod tests {
     }
 
     #[test]
+    fn runtime_api_returns_bad_gateway_when_snapshot_connection_is_refused() {
+        let screen_path = write_test_screen_definition("snapshot-connection-refused");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        drop(listener);
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(100)),
+        )
+        .with_default_screen_path(screen_path.clone());
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{}"#,
+        ));
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("io error"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_snapshot_response_times_out() {
+        let screen_path = write_test_screen_definition("snapshot-timeout");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (_stream, _) = listener.accept().expect("accept");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        });
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(50)),
+        )
+        .with_default_screen_path(screen_path.clone());
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{}"#,
+        ));
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("io error"));
+    }
+
+    #[test]
     #[ignore = "requires local TCP listener"]
     fn runtime_api_projection_accepts_bearer_and_forwards_auth_to_tag_server() {
         let screen_path = write_test_screen_definition("projection-auth-forward");
