@@ -71,3 +71,62 @@ test('keeps fallback behavior for unknown codes', async ({ page }) => {
   await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"object_id": "valve-002"/)
   await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"property": "text"/)
 })
+
+test('loads and downloads screen-definition json', async ({ page }) => {
+  const loadedScreenJson = {
+    schema_version: '1.0.0',
+    screen_id: 'loaded-screen',
+    project_id: 'demo',
+    name: 'Loaded Screen',
+    canvas_width: 1024,
+    canvas_height: 600,
+    objects: [
+      {
+        object_id: 'tank-001',
+        svg_asset_id: 'tank-symbol',
+        x: 40,
+        y: 50,
+        width: 160,
+        height: 180,
+        tag_bindings: {
+          value: 'mock.level.001',
+        },
+        modify_rules: [
+          {
+            property: 'visible',
+            binding_key: 'value',
+            true_value: 'true',
+            false_value: 'false',
+            condition: {
+              op: 'between',
+              min: 10,
+              max: 90,
+            },
+          },
+        ],
+      },
+    ],
+  }
+
+  await page.goto('/')
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('download-screen-button').click(),
+  ])
+  await expect(download.suggestedFilename()).toContain('mock-main.screen.json')
+
+  await page.getByTestId('screen-file-input').setInputFiles({
+    name: 'loaded-screen.screen.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(loadedScreenJson), 'utf-8'),
+  })
+
+  await expect(page.getByTestId('io-status')).toContainText('Loaded loaded-screen.screen.json')
+  await expect(page.getByTestId('object-field')).toHaveValue('tank-001')
+  await expect(page.getByTestId('condition-op-field')).toHaveValue('between')
+  await expect(page.getByTestId('condition-min-field')).toHaveValue('10')
+  await expect(page.getByTestId('condition-max-field')).toHaveValue('90')
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"screen_id": "loaded-screen"/)
+  await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"object_id": "tank-001"/)
+})

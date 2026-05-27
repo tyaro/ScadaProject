@@ -491,6 +491,8 @@ Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_co
 
 また、Editor 上の入力値は `screen-definition.schema.json` に沿う最小シリアライズへ変換し、保存前にJSONプレビューとして確認できるようにする。
 
+最小I/O段階では、Builder UI は生成した `screen-definition` JSON のファイル読込（Load）とファイル保存（Download）を提供し、Tauri/Builder API 経由の実保存に移行する前の往復確認を行う。
+
 #### Builder API エラーマッピングHTTPエンドポイント
 
 Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。

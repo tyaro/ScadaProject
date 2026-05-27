@@ -150,11 +150,19 @@
   let response = $state<BuilderErrorMapResponse | null>(null)
   let parsedTarget = $state<ParsedTargetPath>({ objectId: null, property: null, valid: false })
   let focusStatus = $state('No parsed target yet')
+  let ioStatus = $state('No file loaded yet')
   let screenObjects = $state<ScreenObjectForm[]>(structuredClone(initialScreenObjects))
   let selectedObjectIndex = $state(0)
   let selectedRuleIndex = $state(0)
+  let schemaVersion = $state('1.0.0')
+  let screenId = $state('mock-main')
+  let projectId = $state('demo')
+  let screenName = $state('Mock Main Screen')
+  let canvasWidth = $state(1280)
+  let canvasHeight = $state(720)
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
+  let jsonFileInput: HTMLInputElement | null = null
 
   const emptyRule = (): ModifyRuleForm => ({
     property: 'visible',
@@ -266,12 +274,12 @@
 
   function buildScreenDefinition(): SerializedScreenDefinition {
     return {
-      schema_version: '1.0.0',
-      screen_id: 'mock-main',
-      project_id: 'demo',
-      name: 'Mock Main Screen',
-      canvas_width: 1280,
-      canvas_height: 720,
+      schema_version: schemaVersion,
+      screen_id: screenId,
+      project_id: projectId,
+      name: screenName,
+      canvas_width: canvasWidth,
+      canvas_height: canvasHeight,
       objects: screenObjects.map((object) => ({
         object_id: object.objectId,
         svg_asset_id: object.svgAssetId,
@@ -289,6 +297,191 @@
         })),
       })),
     }
+  }
+
+  function primitiveToString(value: unknown): string {
+    if (value === null || value === undefined) {
+      return ''
+    }
+    if (typeof value === 'string') {
+      return value
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value)
+    }
+    return JSON.stringify(value)
+  }
+
+  function parseFormCondition(condition: ScreenModifyRuleCondition | undefined): Omit<ModifyRuleForm, 'property' | 'bindingKey' | 'trueValue' | 'falseValue'> {
+    if (!condition) {
+      return {
+        conditionOp: 'eq',
+        conditionValue: '',
+        conditionMin: '',
+        conditionMax: '',
+        conditionValues: '',
+      }
+    }
+
+    if (condition.op && usesSingleValueOp(condition.op)) {
+      return {
+        conditionOp: condition.op,
+        conditionValue: primitiveToString(condition.value),
+        conditionMin: '',
+        conditionMax: '',
+        conditionValues: '',
+      }
+    }
+
+    if (condition.op === 'between') {
+      return {
+        conditionOp: 'between',
+        conditionValue: '',
+        conditionMin: primitiveToString(condition.min),
+        conditionMax: primitiveToString(condition.max),
+        conditionValues: '',
+      }
+    }
+
+    if (condition.op === 'in') {
+      return {
+        conditionOp: 'in',
+        conditionValue: '',
+        conditionMin: '',
+        conditionMax: '',
+        conditionValues: (condition.values ?? []).map(primitiveToString).join(','),
+      }
+    }
+
+    if (condition.all) {
+      return {
+        conditionOp: 'all',
+        conditionValue: '',
+        conditionMin: '',
+        conditionMax: '',
+        conditionValues: condition.all
+          .map((clause) => {
+            if (!clause.op) {
+              return ''
+            }
+            return `${clause.op}:${primitiveToString(clause.value)}`
+          })
+          .filter((text) => text !== '')
+          .join(','),
+      }
+    }
+
+    if (condition.any) {
+      return {
+        conditionOp: 'any',
+        conditionValue: '',
+        conditionMin: '',
+        conditionMax: '',
+        conditionValues: condition.any
+          .map((clause) => {
+            if (!clause.op) {
+              return ''
+            }
+            return `${clause.op}:${primitiveToString(clause.value)}`
+          })
+          .filter((text) => text !== '')
+          .join(','),
+      }
+    }
+
+    return {
+      conditionOp: 'eq',
+      conditionValue: '',
+      conditionMin: '',
+      conditionMax: '',
+      conditionValues: '',
+    }
+  }
+
+  function mapLoadedObject(object: SerializedScreenObject): ScreenObjectForm {
+    return {
+      objectId: object.object_id,
+      svgAssetId: object.svg_asset_id,
+      x: object.x,
+      y: object.y,
+      width: object.width,
+      height: object.height,
+      tagBindings: object.tag_bindings ?? {},
+      modifyRules: (object.modify_rules ?? []).map((rule) => ({
+        property: rule.property,
+        bindingKey: rule.binding_key,
+        trueValue: rule.true_value,
+        falseValue: rule.false_value,
+        ...parseFormCondition(rule.condition),
+      })),
+    }
+  }
+
+  function isSerializedScreenDefinition(value: unknown): value is SerializedScreenDefinition {
+    if (!value || typeof value !== 'object') {
+      return false
+    }
+
+    const record = value as Record<string, unknown>
+    return (
+      typeof record.schema_version === 'string' &&
+      typeof record.screen_id === 'string' &&
+      typeof record.project_id === 'string' &&
+      typeof record.name === 'string' &&
+      typeof record.canvas_width === 'number' &&
+      typeof record.canvas_height === 'number' &&
+      Array.isArray(record.objects)
+    )
+  }
+
+  function downloadScreenDefinition() {
+    const screen = buildScreenDefinition()
+    const blob = new Blob([JSON.stringify(screen, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${screen.screen_id}.screen.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+    ioStatus = `Downloaded ${anchor.download}`
+  }
+
+  async function loadScreenDefinitionFile(event: Event) {
+    const target = event.target as HTMLInputElement
+    const file = target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+      if (!isSerializedScreenDefinition(parsed)) {
+        throw new Error('invalid screen-definition shape')
+      }
+
+      schemaVersion = parsed.schema_version
+      screenId = parsed.screen_id
+      projectId = parsed.project_id
+      screenName = parsed.name
+      canvasWidth = parsed.canvas_width
+      canvasHeight = parsed.canvas_height
+
+      const mappedObjects = parsed.objects.map((item) => mapLoadedObject(item as SerializedScreenObject))
+      screenObjects = mappedObjects.length > 0 ? mappedObjects : [emptyObject('draft-object')]
+      selectedObjectIndex = 0
+      selectedRuleIndex = 0
+      ioStatus = `Loaded ${file.name}`
+    } catch (error) {
+      ioStatus = error instanceof Error ? `Load failed: ${error.message}` : 'Load failed'
+    } finally {
+      target.value = ''
+    }
+  }
+
+  function openLoadDialog() {
+    jsonFileInput?.click()
   }
 
   function selectedObject(): ScreenObjectForm {
@@ -492,7 +685,22 @@
         <button class="secondary" type="button" onclick={() => useSample(sampleUnknownError)}>
           Use unknown sample
         </button>
+        <button class="secondary" type="button" data-testid="load-screen-button" onclick={openLoadDialog}>
+          Load screen JSON
+        </button>
+        <button class="secondary" type="button" data-testid="download-screen-button" onclick={downloadScreenDefinition}>
+          Download screen JSON
+        </button>
       </div>
+
+      <input
+        bind:this={jsonFileInput}
+        class="visually-hidden"
+        data-testid="screen-file-input"
+        type="file"
+        accept="application/json,.json"
+        onchange={loadScreenDefinitionFile}
+      />
 
       {#if apiError}
         <div class="notice" role="alert">
@@ -505,6 +713,7 @@
         <li>`known_code=true` のときはテンプレート文言を表示します。</li>
         <li>未知コードは `user_message` に生エラーを残し、UIが最低限の原因を表示できます。</li>
         <li>`path` が `object` / `property` を含むときは、右側の Screen Object Editor で該当フォームへ移動します。</li>
+        <li data-testid="io-status">{ioStatus}</li>
       </ul>
     </section>
 

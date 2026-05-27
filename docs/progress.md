@@ -238,6 +238,7 @@ Runtime API境界テストを強化
   - `apps/builder-ui` の最小 Screen Object Editor に modify rule の condition 本体入力（`op/value/min/max/values`）を追加し、エラー導線のまま rule 修正を始められるようにした
   - Builder UI の Builder API 呼び出しを `apps/builder-ui/src/contracts/builderApi.ts` の契約型（request/response + shape guard）経由に変更し、`contracts/openapi/builder.yaml` と合わせた入出力を明示化した
   - Builder UI に Screen Object Editor から `screen-definition` 形式へ変換する最小シリアライズ（`schema_version/screen_id/project_id/objects/modify_rules.condition`）を追加し、JSONプレビューで保存前確認できるようにした
+  - Builder UI に最小I/O導線として `Load screen JSON`（ファイル読込）と `Download screen JSON`（生成JSON保存）を追加し、`screen-definition` の読み書き往復をブラウザ上で確認できるようにした
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -347,7 +348,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. Builder UI の condition 入力を `config/screens/mock-main.screen.json` へ保存する最小I/O（load/save）に接続し、JSONプレビューだけで終わらない編集反映を追加する。
+1. Builder UI の file I/O 導線を Tauri/Builder API 経由の実保存（`config/screens/mock-main.screen.json` 更新）へ接続し、ダウンロード依存を段階的に解消する。
 2. Builder API 契約ドリフト検出を強化するため、`contracts/openapi/builder.yaml` の shape 検証をローカルCI手順へ統合する。
 
 ## フェーズ0完了条件棚卸し
