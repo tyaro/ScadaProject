@@ -94,6 +94,18 @@ pub struct ScreenObjectDefinition {
     pub height: f64,
     #[serde(default)]
     pub tag_bindings: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub modify_rules: Vec<ScreenModifyRuleDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ScreenModifyRuleDefinition {
+    pub property: String,
+    pub binding_key: String,
+    #[serde(default)]
+    pub true_value: Option<String>,
+    #[serde(default)]
+    pub false_value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -108,6 +120,8 @@ pub struct ScreenObjectState {
     pub object_id: String,
     pub svg_asset_id: String,
     pub bindings: Vec<ObjectBindingState>,
+    #[serde(default)]
+    pub modifiers: Vec<ObjectModifierState>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,6 +131,15 @@ pub struct ObjectBindingState {
     pub value: Option<Value>,
     pub quality: Option<String>,
     pub sequence: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObjectModifierState {
+    pub property: String,
+    pub binding_key: String,
+    pub tag_id: String,
+    pub source_value: Option<Value>,
+    pub rendered: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -621,10 +644,45 @@ pub fn project_snapshot_to_screen(
             });
         }
 
+        let mut modifiers = Vec::new();
+        let mut modify_rules = object.modify_rules.clone();
+        modify_rules.sort_by(|a, b| {
+            a.property
+                .cmp(&b.property)
+                .then_with(|| a.binding_key.cmp(&b.binding_key))
+        });
+
+        for rule in modify_rules {
+            let tag_id = object
+                .tag_bindings
+                .get(&rule.binding_key)
+                .cloned()
+                .unwrap_or_default();
+            let source_value = values_by_tag
+                .get(tag_id.as_str())
+                .map(|value| value.value.clone());
+            let rendered = source_value.as_ref().map(|value| {
+                render_modify_rule_value(
+                    value,
+                    rule.true_value.as_deref(),
+                    rule.false_value.as_deref(),
+                )
+            });
+
+            modifiers.push(ObjectModifierState {
+                property: rule.property,
+                binding_key: rule.binding_key,
+                tag_id,
+                source_value,
+                rendered,
+            });
+        }
+
         object_states.push(ScreenObjectState {
             object_id: object.object_id.clone(),
             svg_asset_id: object.svg_asset_id.clone(),
             bindings,
+            modifiers,
         });
     }
 
@@ -632,6 +690,24 @@ pub fn project_snapshot_to_screen(
         screen_id: definition.screen_id.clone(),
         project_id: definition.project_id.clone(),
         object_states,
+    }
+}
+
+fn render_modify_rule_value(
+    source_value: &Value,
+    true_value: Option<&str>,
+    false_value: Option<&str>,
+) -> String {
+    match source_value {
+        Value::Bool(value) => {
+            if *value {
+                true_value.unwrap_or("true").to_string()
+            } else {
+                false_value.unwrap_or("false").to_string()
+            }
+        }
+        Value::String(value) => value.clone(),
+        _ => source_value.to_string(),
     }
 }
 
@@ -1952,6 +2028,7 @@ mod tests {
                         ("value".to_string(), "mock.temperature.001".to_string()),
                         ("state".to_string(), "mock.running.001".to_string()),
                     ]),
+                    modify_rules: Vec::new(),
                 },
                 ScreenObjectDefinition {
                     object_id: "obj-2".to_string(),
@@ -1964,6 +2041,7 @@ mod tests {
                         "value".to_string(),
                         "mock.temperature.001".to_string(),
                     )]),
+                    modify_rules: Vec::new(),
                 },
             ],
         };
@@ -1998,6 +2076,20 @@ mod tests {
                     ("value".to_string(), "mock.temperature.001".to_string()),
                     ("state".to_string(), "missing.tag".to_string()),
                 ]),
+                modify_rules: vec![
+                    ScreenModifyRuleDefinition {
+                        property: "color".to_string(),
+                        binding_key: "state".to_string(),
+                        true_value: Some("#00ff00".to_string()),
+                        false_value: Some("#999999".to_string()),
+                    },
+                    ScreenModifyRuleDefinition {
+                        property: "text".to_string(),
+                        binding_key: "value".to_string(),
+                        true_value: None,
+                        false_value: None,
+                    },
+                ],
             }],
         };
         let snapshot = TagSnapshot {
@@ -2024,11 +2116,17 @@ mod tests {
         assert_eq!("main", projection.screen_id);
         assert_eq!(1, projection.object_states.len());
         assert_eq!(2, projection.object_states[0].bindings.len());
+        assert_eq!(2, projection.object_states[0].modifiers.len());
         assert_eq!(
             Some(Value::from(21.0)),
             projection.object_states[0].bindings[1].value
         );
         assert_eq!(None, projection.object_states[0].bindings[0].value);
+        assert_eq!(None, projection.object_states[0].modifiers[0].rendered);
+        assert_eq!(
+            Some("21.0".to_string()),
+            projection.object_states[0].modifiers[1].rendered
+        );
     }
 
     #[test]
@@ -2066,6 +2164,7 @@ mod tests {
                         sequence: Some(5),
                     },
                 ],
+                modifiers: Vec::new(),
             }],
         };
         let newer = RuntimeTagValue {

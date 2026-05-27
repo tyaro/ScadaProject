@@ -16,7 +16,21 @@
       "tag_bindings": {
         "state": "mock.running.001",
         "value": "mock.temperature.001"
-      }
+      },
+      "modify_rules": [
+        {
+          "property": "visible",
+          "binding_key": "state",
+          "true_value": "true",
+          "false_value": "false"
+        },
+        {
+          "property": "color",
+          "binding_key": "state",
+          "true_value": "#3cb371",
+          "false_value": "#808080"
+        }
+      ]
     },
     {
       "object_id": "label-001",
@@ -27,7 +41,13 @@
       "height": 48,
       "tag_bindings": {
         "value": "mock.temperature.001"
-      }
+      },
+      "modify_rules": [
+        {
+          "property": "text",
+          "binding_key": "value"
+        }
+      ]
     }
   ]
 }

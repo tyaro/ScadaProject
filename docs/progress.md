@@ -209,6 +209,11 @@ Runtime API境界テストを強化
   - Tag Serverにインメモリ操作ログ（最新256件）を追加し、`GET /api/v1/operation-logs` で取得可能にした
   - ControlCommand処理で `Validated` / `Rejected` / `Failed` などの最終状態を操作ログへ記録する最小実装を追加
   - 操作ログ保存と逆時系列取得をユニットテストで固定化し、フェーズ1の「操作ログ最小保存」の実動確認を完了
+  - `screen-definition.schema.json` に `modify_rules` を追加し、色・文字・表示状態の定義を画面定義JSON側で持てるようにした
+  - Preview Runtimeの投影モデルに `modifiers` を追加し、`modify_rules` をタグ値から解決した `rendered` 状態を返す最小実装を追加
+  - `config/screens/mock-main.screen.json` に `visible` / `color` / `text` の `modify_rules` 例を追加
+  - OpenAPIの `ScreenProjectionResponse` に `modifiers` を追加し、Runtime API投影契約を同期
+  - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -314,8 +319,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. フェーズ1完了条件の残項目であるSVG modify rules（色、文字、表示状態）の仕様を明文化し、Runtime投影モデルへの反映方針とテスト観点を確定する。
-2. `runtime.yaml` の request/response再利用方針に沿って、残る直書き定義（必要なら requestBodies/parameters 含む）を棚卸しし、共通化の適用範囲を確定する。
+1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
+2. Runtime UIで `modifiers` を利用した表示反映（色・文字・表示状態）を段階導入し、E2Eで投影値との整合を固定化する。
 
 ## フェーズ0完了条件棚卸し
 

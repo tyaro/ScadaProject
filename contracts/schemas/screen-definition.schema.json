@@ -26,6 +26,20 @@
           "tag_bindings": {
             "type": "object",
             "additionalProperties": { "type": "string" }
+          },
+          "modify_rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "property": { "type": "string", "minLength": 1 },
+                "binding_key": { "type": "string", "minLength": 1 },
+                "true_value": { "type": "string" },
+                "false_value": { "type": "string" }
+              },
+              "required": ["property", "binding_key"]
+            }
           }
         },
         "required": ["object_id", "svg_asset_id", "x", "y", "width", "height"]

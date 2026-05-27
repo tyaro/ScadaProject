@@ -247,10 +247,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ObjectBindingState"
+        modifiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ObjectModifierState"
       required:
         - object_id
         - svg_asset_id
         - bindings
+        - modifiers
+    ObjectModifierState:
+      type: object
+      properties:
+        property:
+          type: string
+        binding_key:
+          type: string
+        tag_id:
+          type: string
+        source_value: {}
+        rendered:
+          type: string
+          nullable: true
+      required:
+        - property
+        - binding_key
+        - tag_id
+        - source_value
+        - rendered
     ScreenProjectionResponse:
       type: object
       properties:
