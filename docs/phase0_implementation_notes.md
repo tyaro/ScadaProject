@@ -124,6 +124,26 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
 - `target/debug/tauri-shell --print-service-plan --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
 - `target/debug/tauri-shell --supervise-once --bin-dir target/debug --service-config config/tauri-shell.services.json`: 成功
 
+## ローカルCIチェック
+
+- `scripts/check_local_ci.sh`
+  - 通常チェック:
+    - `cargo fmt --check`
+    - `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`
+    - `apps/runtime-ui` の `npm run check`
+    - Preview RuntimeのローカルTCP listener依存テストは `#[ignore]` とし、通常チェックでは実行しない。
+  - `RUN_RUNTIME_UI_E2E=1` 指定時:
+    - `apps/runtime-ui` の `npm run test:e2e`
+    - Vite/Playwrightのローカルポートbindが必要
+  - `RUN_BIND_TESTS=1` 指定時:
+    - `cargo test -p preview-runtime -- --ignored`
+    - `scripts/check_preview_runtime_mqtt_resync.sh`
+    - Tag Server / Preview Runtime のローカルポートbindが必要
+- CIへ組み込む場合の推奨:
+  - 標準ジョブでは `scripts/check_local_ci.sh` を実行する。
+  - ポートbindが許可されるジョブでは `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 scripts/check_local_ci.sh` を実行する。
+  - bind依存ジョブは失敗時ログ（`/tmp/preview-runtime-mqtt-resync.log`, `/tmp/tag-server-mqtt-resync.log`, Playwright traces）をartifactとして保存する。
+
 ## `tauri-shell` CLI仕様メモ（service-config/supervisor）
 
 - `--service-config <path>`

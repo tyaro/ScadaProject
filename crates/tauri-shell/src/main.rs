@@ -839,7 +839,8 @@ mod tests {
 
     #[test]
     fn service_config_schema_file_matches_runtime_schema_version() {
-        let schema_path = workspace_root().join("contracts/schemas/tauri-shell-service-config.schema.json");
+        let schema_path =
+            workspace_root().join("contracts/schemas/tauri-shell-service-config.schema.json");
         let schema_raw = fs::read_to_string(&schema_path).expect("read schema");
         let schema_json: serde_json::Value =
             serde_json::from_str(&schema_raw).expect("parse schema json");
