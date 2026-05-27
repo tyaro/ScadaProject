@@ -76,6 +76,49 @@
         { "required": ["op"] },
         { "required": ["all"] },
         { "required": ["any"] }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "eq" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "ne" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "gt" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "gte" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "lt" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "lte" } }, "required": ["op"] },
+          "then": { "required": ["value"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "between" } }, "required": ["op"] },
+          "then": { "required": ["min", "max"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "in" } }, "required": ["op"] },
+          "then": {
+            "required": ["values"],
+            "properties": {
+              "values": {
+                "type": "array",
+                "minItems": 1,
+                "items": {}
+              }
+            }
+          }
+        }
       ]
     }
   },

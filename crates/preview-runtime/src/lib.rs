@@ -594,9 +594,79 @@ pub fn load_screen_definition(path: &Path) -> Result<ScreenDefinition, RuntimeCl
         RuntimeClientError::ScreenDefinition(format!("failed to read {}: {error}", path.display()))
     })?;
 
-    serde_json::from_str(&raw).map_err(|error| {
+    let definition: ScreenDefinition = serde_json::from_str(&raw).map_err(|error| {
         RuntimeClientError::ScreenDefinition(format!("failed to parse {}: {error}", path.display()))
-    })
+    })?;
+
+    validate_screen_definition(&definition).map_err(|error| {
+        RuntimeClientError::ScreenDefinition(format!("invalid {}: {error}", path.display()))
+    })?;
+
+    Ok(definition)
+}
+
+fn validate_screen_definition(definition: &ScreenDefinition) -> Result<(), String> {
+    for object in &definition.objects {
+        for rule in &object.modify_rules {
+            if let Some(condition) = &rule.condition {
+                validate_modify_rule_condition(
+                    condition,
+                    &format!("object={} property={}", object.object_id, rule.property),
+                )?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_modify_rule_condition(condition: &ModifyRuleCondition, path: &str) -> Result<(), String> {
+    let has_op = condition.op.is_some();
+    let has_all = !condition.all.is_empty();
+    let has_any = !condition.any.is_empty();
+
+    if !has_op && !has_all && !has_any {
+        return Err(format!(
+            "{path}: condition requires op, all, or any"
+        ));
+    }
+
+    if let Some(op) = condition.op.as_deref() {
+        match op {
+            "eq" | "ne" | "gt" | "gte" | "lt" | "lte" => {
+                if condition.value.is_none() {
+                    return Err(format!("{path}: op '{op}' requires value"));
+                }
+            }
+            "between" => match (condition.min, condition.max) {
+                (Some(min), Some(max)) => {
+                    if min > max {
+                        return Err(format!("{path}: between requires min <= max"));
+                    }
+                }
+                _ => {
+                    return Err(format!("{path}: op 'between' requires min and max"));
+                }
+            },
+            "in" => {
+                if condition.values.as_ref().map(|values| values.is_empty()).unwrap_or(true) {
+                    return Err(format!("{path}: op 'in' requires non-empty values"));
+                }
+            }
+            _ => {
+                return Err(format!("{path}: unsupported op '{op}'"));
+            }
+        }
+    }
+
+    for (index, child) in condition.all.iter().enumerate() {
+        validate_modify_rule_condition(child, &format!("{path} all[{index}]"))?;
+    }
+    for (index, child) in condition.any.iter().enumerate() {
+        validate_modify_rule_condition(child, &format!("{path} any[{index}]"))?;
+    }
+
+    Ok(())
 }
 
 pub fn resolve_tag_ids_from_screen(definition: &ScreenDefinition) -> Vec<String> {
@@ -2467,5 +2537,60 @@ mod tests {
             Some("#ff0000".to_string()),
             projection.object_states[0].modifiers[0].rendered
         );
+    }
+
+    #[test]
+    fn validate_modify_rule_condition_rejects_between_without_min_max() {
+        let condition = ModifyRuleCondition {
+            op: Some("between".to_string()),
+            value: None,
+            min: Some(10.0),
+            max: None,
+            values: None,
+            all: Vec::new(),
+            any: Vec::new(),
+        };
+
+        let error = validate_modify_rule_condition(&condition, "test").expect_err("invalid");
+        assert!(error.contains("requires min and max"));
+    }
+
+    #[test]
+    fn validate_modify_rule_condition_rejects_in_without_values() {
+        let condition = ModifyRuleCondition {
+            op: Some("in".to_string()),
+            value: None,
+            min: None,
+            max: None,
+            values: Some(Vec::new()),
+            all: Vec::new(),
+            any: Vec::new(),
+        };
+
+        let error = validate_modify_rule_condition(&condition, "test").expect_err("invalid");
+        assert!(error.contains("requires non-empty values"));
+    }
+
+    #[test]
+    fn validate_modify_rule_condition_accepts_composite_without_op() {
+        let condition = ModifyRuleCondition {
+            op: None,
+            value: None,
+            min: None,
+            max: None,
+            values: None,
+            all: vec![ModifyRuleCondition {
+                op: Some("gte".to_string()),
+                value: Some(Value::from(10.0)),
+                min: None,
+                max: None,
+                values: None,
+                all: Vec::new(),
+                any: Vec::new(),
+            }],
+            any: Vec::new(),
+        };
+
+        validate_modify_rule_condition(&condition, "test").expect("valid");
     }
 }

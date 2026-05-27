@@ -220,6 +220,9 @@ Runtime API境界テストを強化
   - `modify_rules.condition`（`eq/ne/gt/gte/lt/lte/between/in` + `all/any`）を追加し、比較演算・範囲条件・複合条件を評価できるようにした
   - `ObjectModifierState.condition` をRuntime投影契約へ追加し、Runtime UIのdelta再評価ロジックでも同じ条件評価を適用した
   - `config/screens/mock-main.screen.json` を条件付きルール例（閾値色変更、正常範囲テキスト）へ更新し、E2Eに条件付きmodifierのMQTT追従テストを追加した
+  - `screen-definition.schema.json` に演算子別必須項目を追加し、`between` は `min/max` 必須、`in` は非空 `values` 必須、比較演算は `value` 必須へ厳格化した
+  - Preview Runtimeの画面定義読み込み時に条件の意味検証を追加し、不正conditionを `ScreenDefinition` エラーとして即時返すようにした
+  - Preview Runtimeにcondition検証ユニットテスト（不正 `between` / 不正 `in` / 複合条件のみ許容）を追加した
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
@@ -327,7 +330,7 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
-2. `modify_rules` の演算子ごとの入力バリデーション（`between` は `min/max` 必須、`in` は `values` 必須など）をschema/実装で厳格化する。
+2. `modify_rules` のconditionバリデーションエラーをRuntime UI/Builderで利用しやすい形式（コード付き詳細）に整理する。
 
 ## フェーズ0完了条件棚卸し
 

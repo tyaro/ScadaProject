@@ -78,7 +78,7 @@ Svelte画面
 | フェーズ | 状態 | 現在の補足 |
 | --- | --- | --- |
 | フェーズ0: Mock通信基盤 | 完了（主要完了条件を満たす） | Mock値流れ、Mock書き込み流れ、MQTT配信、ローカルsupervisor運用を確認済み |
-| フェーズ1: Runtime最小縦断 | 実施中 | Runtime API/Tag ServerのエラーJSON契約を固定化し、Runtime UIで `error` / `publish_errors` / statusフォールバック表示をE2Eで検証済み。OpenAPIは `components.responses` / `components.schemas` で成功・失敗応答とrequestBody入力DTOを共通化済み。Tag Serverの操作ログ最小保存（`GET /api/v1/operation-logs`）、Preview RuntimeのSVG modify rules最小投影（`modifiers`）、Runtime UIでの `modifiers` 最小反映（色・表示・文字）、MQTT delta時のmodifier再評価、`modify_rules.condition` による比較/範囲/複合条件評価まで実装済み |
+| フェーズ1: Runtime最小縦断 | 実施中 | Runtime API/Tag ServerのエラーJSON契約を固定化し、Runtime UIで `error` / `publish_errors` / statusフォールバック表示をE2Eで検証済み。OpenAPIは `components.responses` / `components.schemas` で成功・失敗応答とrequestBody入力DTOを共通化済み。Tag Serverの操作ログ最小保存（`GET /api/v1/operation-logs`）、Preview RuntimeのSVG modify rules最小投影（`modifiers`）、Runtime UIでの `modifiers` 最小反映（色・表示・文字）、MQTT delta時のmodifier再評価、`modify_rules.condition` の比較/範囲/複合条件評価、演算子別入力バリデーション厳格化まで実装済み |
 | フェーズ2: Builder最小機能 | 未着手 | フェーズ1完了条件の充足後に着手 |
 | フェーズ3: 現場通信・履歴・アラーム | 未着手 | 実ドライバ、履歴、Alarm Engineは後続 |
 | フェーズ4: 制御・帳票・公開管理 | 未着手 | MVPスコープ外のため後続 |
