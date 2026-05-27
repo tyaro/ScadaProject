@@ -195,6 +195,8 @@
   - `rust-toolchain.toml` を `channel = "stable"` へ修正
   - 2回目CI失敗原因を特定（`scripts/check_local_ci.sh` の `nvm use 24` がCI環境で失敗）
   - `scripts/check_local_ci.sh` を修正し、`nvm` 非依存でNode 24を検証する形へ改善
+  - `supervise_loop_reset` のイベントコード境界テストを安定化（`RESTARTED` を含む複合イベントを許容）
+  - `.github/workflows/ci.yml` に `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` を追加し、Node 20 deprecation警告へ追従
   - 3回目CI失敗原因を特定（`tauri-shell` の `supervise_loop_reset` テストで `events=START_ERROR,RESTARTED` を想定外扱い）
   - `crates/tauri-shell/tests/supervise_loop_reset.rs` のイベント判定を修正し、`RESTARTED` を含む複合イベント列を許容
 - Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
@@ -274,7 +276,7 @@
 
 ## 次に行うこと
 
-1. GitHub ActionsのNode 20 deprecation警告（`actions/checkout@v4`）への追従方針を決める（Node 24対応版への更新または環境変数運用）。
+1. GitHub Actions run（`test(tauri-shell): accept mixed restart event codes`）の最終結果を確認し、必要なら失敗ログを反映する。
 
 ## フェーズ0完了条件棚卸し
 
