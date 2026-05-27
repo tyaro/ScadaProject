@@ -142,6 +142,7 @@
   - モックTag Server TCPサーバで `POST /api/v1/tags/snapshot` と `POST /api/v1/control-commands` の転送を検証
   - `projection` でTag Server snapshot取得が失敗したときに `502 Bad Gateway` を返す境界テストを追加
   - `projection` のinvalid JSONと不正 `screen_path` を `400` で返す境界テストを追加
+  - Tag Server snapshot応答が不正JSONまたは空本文のときにRuntime APIが `502 Bad Gateway` を返す境界テストを追加
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -259,7 +260,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
-3. Runtime APIのHTTP境界テストを追加し、Tag Serverの不正JSON応答や空応答を扱うケースを確認する。
+3. Runtime APIのControlCommand転送境界で、Tag Server側の非JSON/空応答や非2xx応答の扱いを確認する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -305,6 +306,8 @@
 - `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 scripts/check_local_ci.sh`: 成功（GitHub Actions手動bind依存ジョブ相当、Runtime UI E2E 12 passed + bind依存検証）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
+- `cargo test -p preview-runtime`: 成功（Tag Server snapshot不正JSON/空応答の通常テスト確認、bind依存テストはignored）
+- `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server snapshot不正JSON/空応答のbind依存境界テストを含む6件）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
 - `scripts/check_preview_runtime_mqtt_resync.sh`: 成功（`mqtt-subscribe` 失敗→snapshot再同期→`backoff=1s` ログを検証）
 - `nvm use 24 && npm --version`: `11.13.0`
