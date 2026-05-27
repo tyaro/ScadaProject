@@ -218,7 +218,7 @@
     try {
       const body = (await response.clone().json()) as ErrorResponse
       if (body.error) {
-        return body.error
+        return mapRuntimeErrorMessage(body.error)
       }
       if (Array.isArray(body.publish_errors) && body.publish_errors.length > 0) {
         return body.publish_errors[0]
@@ -226,6 +226,44 @@
       return `${label} ${response.status}`
     } catch {
       return `${label} ${response.status}`
+    }
+  }
+
+  function mapRuntimeErrorMessage(raw: string): string {
+    const parsed = parseCodedError(raw)
+    if (!parsed) return raw
+
+    if (parsed.code === 'MODIFY_RULE_CONDITION_MISSING_SELECTOR') {
+      return `invalid modify rule condition at ${parsed.path}: choose op, all, or any`
+    }
+    if (parsed.code === 'MODIFY_RULE_CONDITION_VALUE_REQUIRED') {
+      return `invalid modify rule condition at ${parsed.path}: missing value`
+    }
+    if (parsed.code === 'MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX') {
+      return `invalid modify rule condition at ${parsed.path}: between requires min and max`
+    }
+    if (parsed.code === 'MODIFY_RULE_CONDITION_BETWEEN_RANGE_INVALID') {
+      return `invalid modify rule condition at ${parsed.path}: min must be less than or equal to max`
+    }
+    if (parsed.code === 'MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES') {
+      return `invalid modify rule condition at ${parsed.path}: in requires non-empty values`
+    }
+    if (parsed.code === 'MODIFY_RULE_CONDITION_UNSUPPORTED_OP') {
+      return `invalid modify rule condition at ${parsed.path}: unsupported operator`
+    }
+
+    return raw
+  }
+
+  function parseCodedError(raw: string): { code: string; path: string; detail: string } | null {
+    const codeMatch = raw.match(/code=([A-Z0-9_]+)/)
+    const pathMatch = raw.match(/path=(.+?) detail=/)
+    const detailMatch = raw.match(/detail=(.+)$/)
+    if (!codeMatch || !pathMatch || !detailMatch) return null
+    return {
+      code: codeMatch[1],
+      path: pathMatch[1],
+      detail: detailMatch[1],
     }
   }
 

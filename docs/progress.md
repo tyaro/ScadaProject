@@ -225,6 +225,8 @@ Runtime API境界テストを強化
   - Preview Runtimeにcondition検証ユニットテスト（不正 `between` / 不正 `in` / 複合条件のみ許容）を追加した
   - condition検証エラーを `code=<...> path=<...> detail=<...>` 形式で返すようにし、Runtime UI/Builder側で機械的に分類できる下地を追加した
   - condition検証ユニットテストにコード/詳細フォーマット検証を追加した
+  - Runtime UIで `code=<...>` を解釈し、condition定義エラーをユーザー向け文言へマッピングする処理を追加した
+  - Playwrightに「コード付きconditionエラーがユーザー向け文言で表示される」回帰テストを追加した
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
@@ -332,7 +334,7 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
-2. Runtime UI側で `code=<...>` を解釈し、condition定義エラーの表示をユーザー向け文言へマッピングする。
+2. Builder API/Builder UIでも同じエラーコードを共有利用できるよう、エラーコード一覧と表示マッピング表を契約文書へ追加する。
 
 ## フェーズ0完了条件棚卸し
 

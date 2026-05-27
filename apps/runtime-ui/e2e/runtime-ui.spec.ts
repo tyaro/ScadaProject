@@ -746,6 +746,37 @@ test('falls back to status when projection error body is not json', async ({ pag
   await expect(page.getByRole('button', { name: 'Stop' })).toBeDisabled()
 })
 
+test('maps coded modify-rule validation errors to user-friendly message', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error:
+          'screen definition error: invalid config/screens/mock-main.screen.json: code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op \'between\' requires min and max',
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByRole('alert')).toContainText('Projection')
+  await expect(
+    page.getByText('invalid modify rule condition at object=pump-001 property=color: between requires min and max')
+  ).toBeVisible()
+})
+
 test('recovers from projection fetch failure after manual refresh', async ({ page }) => {
   let projectionCalls = 0
 
