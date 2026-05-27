@@ -132,6 +132,18 @@ test('loads and downloads screen-definition json', async ({ page }) => {
 })
 
 test('loads and saves screen-definition via builder api', async ({ page }) => {
+  await page.route('**/runtime-api/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        screen_id: 'mock-main',
+        project_id: 'demo',
+        object_states: [{ object_id: 'project-pump-001', bindings: [] }],
+      }),
+    })
+  })
+
   await page.route('**/api/v1/screens/mock-main', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
@@ -214,6 +226,9 @@ test('loads and saves screen-definition via builder api', async ({ page }) => {
   await page.getByTestId('save-as-path-field').fill('config/screens/custom/from-ui.screen.json')
   await page.getByTestId('save-as-project-screen-button').click()
   await expect(page.getByTestId('io-status')).toContainText('Saved to config/screens/custom/from-ui.screen.json')
+
+  await page.getByTestId('preview-runtime-button').click()
+  await expect(page.getByTestId('runtime-preview-status-row')).toContainText('Projection loaded: mock-main (1 objects)')
 })
 
 test('blocks project save when screen_id is invalid', async ({ page }) => {
@@ -261,5 +276,9 @@ test('blocks save-as when relative_path is invalid', async ({ page }) => {
   await page.getByTestId('use-screen-id-path-button').click()
   await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/mock-main.screen.json')
   await expect(page.getByTestId('save-as-project-screen-button')).toBeEnabled()
+  await expect(page.getByTestId('preview-runtime-button')).toBeEnabled()
+
+  await page.getByTestId('save-as-path-field').fill('')
+  await expect(page.getByTestId('preview-runtime-button')).toBeEnabled()
   await expect(saveAsApiCallCount).toBe(0)
 })

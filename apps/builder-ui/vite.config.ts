@@ -9,6 +9,10 @@ export default defineConfig({
         target: process.env.VITE_BUILDER_API_TARGET ?? 'http://127.0.0.1:18110',
         changeOrigin: true,
       },
+      '/runtime-api': {
+        target: process.env.VITE_RUNTIME_API_TARGET ?? 'http://127.0.0.1:18090',
+        changeOrigin: true,
+      },
     },
   },
 })

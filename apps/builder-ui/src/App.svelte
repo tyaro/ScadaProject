@@ -42,6 +42,12 @@
     modifyRules: ModifyRuleForm[]
   }
 
+  type RuntimeProjectionSummary = {
+    screen_id: string
+    project_id: string
+    object_states: unknown[]
+  }
+
   const sampleKnownError =
     "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
   const sampleUnknownError =
@@ -130,6 +136,7 @@
   let canvasWidth = $state(1280)
   let canvasHeight = $state(720)
   let saveAsRelativePath = $state('config/screens/mock-main.screen.json')
+  let runtimePreviewStatus = $state('No runtime preview yet')
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -492,6 +499,33 @@
     return `config/screens/${trimmed}.screen.json`
   }
 
+  function previewRequestPath(): string | null {
+    const preferred = saveAsRelativePath.trim()
+    if (isSaveAsPathValid(preferred)) {
+      return preferred
+    }
+
+    const fallback = projectScreenPath(screenId)
+    if (fallback.includes('<screen_id>')) {
+      return null
+    }
+
+    return fallback
+  }
+
+  function isRuntimeProjectionSummary(value: unknown): value is RuntimeProjectionSummary {
+    if (!value || typeof value !== 'object') {
+      return false
+    }
+
+    const record = value as Record<string, unknown>
+    return (
+      typeof record.screen_id === 'string' &&
+      typeof record.project_id === 'string' &&
+      Array.isArray(record.object_states)
+    )
+  }
+
   function syncSaveAsPathToScreenId() {
     const nextPath = projectScreenPath(screenId)
     if (!nextPath.includes('<screen_id>')) {
@@ -610,6 +644,37 @@
       ioStatus = `Saved to ${body.saved_path}`
     } catch (error) {
       ioStatus = error instanceof Error ? `Project save-as failed: ${error.message}` : 'Project save-as failed'
+    }
+  }
+
+  async function previewScreenInRuntime() {
+    const screenPath = previewRequestPath()
+    if (!screenPath) {
+      runtimePreviewStatus = 'Runtime preview failed: valid screen path is required'
+      return
+    }
+
+    runtimePreviewStatus = `Previewing ${screenPath}...`
+    try {
+      const httpResponse = await fetch('/runtime-api/api/v1/screens/projection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ screen_path: screenPath }),
+      })
+
+      if (!httpResponse.ok) {
+        const errorBody = await parseError(httpResponse)
+        throw new Error(errorBody)
+      }
+
+      const body = await httpResponse.json()
+      if (!isRuntimeProjectionSummary(body)) {
+        throw new Error('runtime api returned invalid projection contract')
+      }
+
+      runtimePreviewStatus = `Projection loaded: ${body.screen_id} (${body.object_states.length} objects)`
+    } catch (error) {
+      runtimePreviewStatus = error instanceof Error ? `Runtime preview failed: ${error.message}` : 'Runtime preview failed'
     }
   }
 
@@ -853,6 +918,19 @@
           >
             Save as path
           </button>
+          <button
+            class="secondary"
+            type="button"
+            data-testid="preview-runtime-button"
+            onclick={previewScreenInRuntime}
+            disabled={previewRequestPath() === null}
+          >
+            Preview in runtime
+          </button>
+        </div>
+        <div class="result-row compact project-path-row" data-testid="runtime-preview-status-row">
+          <span>Runtime Preview</span>
+          <code>{runtimePreviewStatus}</code>
         </div>
         {#if !isScreenIdValid(screenId)}
           <p class="inline-error" data-testid="screen-id-validation-message">

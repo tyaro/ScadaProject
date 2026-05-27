@@ -256,6 +256,8 @@ Runtime API境界テストを強化
   - Builder UI に `Save As Relative Path` 入力と `Save as path` ボタンを追加し、無効パス（`..`、prefix不一致、拡張子不一致）をクライアント側で即時ブロックするようにした
   - `apps/builder-ui` の E2E を6ケースへ拡張し、Save As 成功と無効 `relative_path` ブロックの回帰を固定化した
   - `contracts/openapi/builder.yaml` と `scripts/check_local_ci.sh` の Builder OpenAPI 必須パス検証に `/api/v1/screens/save-as` を追加した
+  - Builder UI から Preview Runtime の `POST /api/v1/screens/projection` を呼び出す最小プレビュー導線を追加し、保存候補パスを即座に Runtime 側で投影確認できるようにした
+  - `apps/builder-ui` の E2E に Runtime preview ブリッジ検証を追加し、Builder API だけでなく Builder-Runtime 横断の回帰も固定化した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -365,7 +367,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `POST /api/v1/screens/save-as` を将来の Tauri ファイル選択結果と接続し、相対パス入力をダイアログ選択へ置き換える。
+1. `POST /api/v1/screens/save-as` と Runtime preview 呼び出し先を将来の Tauri ファイル選択結果へ接続し、相対パス入力をダイアログ選択へ置き換える。
 2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
 
 ## フェーズ0完了条件棚卸し
@@ -401,7 +403,7 @@ Runtime API境界テストを強化
 - `cargo test -p builder-api`: 成功（12 passed）
 - `RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 scripts/check_local_ci.sh`: 成功（fmt + Rust主要crate + Builder OpenAPI必須パスチェック + runtime-ui check）
 - `cd apps/builder-ui && npm run check`: 成功
-- `cd apps/builder-ui && npm run test:e2e`: 成功（6 passed）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（6 passed, Runtime preview bridge回帰を含む）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
