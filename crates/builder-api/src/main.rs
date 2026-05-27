@@ -3,8 +3,21 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 
+use jsonschema::{Draft, JSONSchema};
+use once_cell::sync::Lazy;
 use scada_core::service::{print_health, ServiceRole};
 use serde::{Deserialize, Serialize};
+
+static SCREEN_DEFINITION_SCHEMA: Lazy<Result<JSONSchema, String>> = Lazy::new(|| {
+    let raw_schema = include_str!("../../../contracts/schemas/screen-definition.schema.json");
+    let schema_json: serde_json::Value =
+        serde_json::from_str(raw_schema).map_err(|error| error.to_string())?;
+
+    JSONSchema::options()
+        .with_draft(Draft::Draft202012)
+        .compile(&schema_json)
+        .map_err(|error| error.to_string())
+});
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodedError {
@@ -71,7 +84,11 @@ fn main() {
 
     if let Some(raw) = arg_value(&args, "--map-error-json") {
         let mapped = map_condition_error(&raw);
-        println!("{}", serde_json::to_string(&mapped).unwrap_or_else(|_| error_json("failed to serialize error mapping")));
+        println!(
+            "{}",
+            serde_json::to_string(&mapped)
+                .unwrap_or_else(|_| error_json("failed to serialize error mapping"))
+        );
         return;
     }
 
@@ -185,7 +202,28 @@ fn handle_builder_request_with_project_root(
         if request.method == "GET" {
             let path = screen_file_path(project_root, screen_id);
             return match fs::read_to_string(&path) {
-                Ok(body) => BuilderHttpResponse::json(200, body),
+                Ok(body) => {
+                    let parsed: serde_json::Value = match serde_json::from_str(&body) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            return BuilderHttpResponse::json(
+                                500,
+                                error_json(&format!(
+                                    "screen definition JSON parse failed: {error}"
+                                )),
+                            )
+                        }
+                    };
+
+                    if let Err(message) = validate_screen_definition_schema(&parsed) {
+                        return BuilderHttpResponse::json(
+                            500,
+                            error_json(&format!("screen definition schema invalid: {message}")),
+                        );
+                    }
+
+                    BuilderHttpResponse::json(200, body)
+                }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                     BuilderHttpResponse::json(404, error_json("screen definition not found"))
                 }
@@ -204,11 +242,8 @@ fn handle_builder_request_with_project_root(
                 }
             };
 
-            if !is_screen_definition_shape(&parsed) {
-                return BuilderHttpResponse::json(
-                    400,
-                    error_json("invalid screen-definition shape"),
-                );
+            if let Err(message) = validate_screen_definition_schema(&parsed) {
+                return BuilderHttpResponse::json(400, error_json(&message));
             }
 
             if parsed["screen_id"].as_str() != Some(screen_id) {
@@ -248,27 +283,21 @@ fn handle_builder_request_with_project_root(
     BuilderHttpResponse::json(404, error_json("not found"))
 }
 
-fn is_screen_definition_shape(value: &serde_json::Value) -> bool {
-    let Some(record) = value.as_object() else {
-        return false;
-    };
+fn validate_screen_definition_schema(value: &serde_json::Value) -> Result<(), String> {
+    let schema = SCREEN_DEFINITION_SCHEMA
+        .as_ref()
+        .map_err(|error| format!("screen-definition schema compile failed: {error}"))?;
 
-    record.get("schema_version").and_then(|item| item.as_str()).is_some()
-        && record.get("screen_id").and_then(|item| item.as_str()).is_some()
-        && record.get("project_id").and_then(|item| item.as_str()).is_some()
-        && record.get("name").and_then(|item| item.as_str()).is_some()
-        && record
-            .get("canvas_width")
-            .and_then(|item| item.as_i64())
-            .is_some()
-        && record
-            .get("canvas_height")
-            .and_then(|item| item.as_i64())
-            .is_some()
-        && record
-            .get("objects")
-            .and_then(|item| item.as_array())
-            .is_some()
+    match schema.validate(value) {
+        Ok(_) => Ok(()),
+        Err(errors) => {
+            let details = errors
+                .map(|error| format!("{}: {}", error.instance_path, error))
+                .collect::<Vec<String>>()
+                .join("; ");
+            Err(format!("invalid screen-definition shape: {details}"))
+        }
+    }
 }
 
 fn screen_id_from_path(path: &str) -> Option<&str> {
@@ -334,10 +363,16 @@ fn map_condition_error(raw: &str) -> ConditionErrorMapping {
 
     let message = match parsed.code.as_str() {
         "MODIFY_RULE_CONDITION_MISSING_SELECTOR" => {
-            format!("invalid modify rule condition at {}: choose op, all, or any", parsed.path)
+            format!(
+                "invalid modify rule condition at {}: choose op, all, or any",
+                parsed.path
+            )
         }
         "MODIFY_RULE_CONDITION_VALUE_REQUIRED" => {
-            format!("invalid modify rule condition at {}: missing value", parsed.path)
+            format!(
+                "invalid modify rule condition at {}: missing value",
+                parsed.path
+            )
         }
         "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX" => {
             format!(
@@ -508,8 +543,14 @@ mod tests {
         assert_eq!(200, response.status_code);
         assert_eq!("application/json", response.content_type);
         assert_eq!(Some("SOME_NEW_ERROR"), payload["code"].as_str());
-        assert_eq!(Some("object=valve-002 property=text"), payload["path"].as_str());
-        assert_eq!(Some("unexpected runtime validation state"), payload["detail"].as_str());
+        assert_eq!(
+            Some("object=valve-002 property=text"),
+            payload["path"].as_str()
+        );
+        assert_eq!(
+            Some("unexpected runtime validation state"),
+            payload["detail"].as_str()
+        );
         assert_eq!(Some(false), payload["known_code"].as_bool());
         assert_eq!(Some(raw), payload["user_message"].as_str());
     }
@@ -582,7 +623,10 @@ mod tests {
             .join("mock-main.screen.json");
 
         assert_eq!(200, response.status_code);
-        assert_eq!(Some("config/screens/mock-main.screen.json"), payload["saved_path"].as_str());
+        assert_eq!(
+            Some("config/screens/mock-main.screen.json"),
+            payload["saved_path"].as_str()
+        );
         assert!(saved_path.exists());
         let _ = std::fs::remove_dir_all(project_root);
     }
@@ -604,6 +648,51 @@ mod tests {
             .as_str()
             .expect("error")
             .contains("screen_id in body must match path"));
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_put_screen_rejects_schema_violation() {
+        let project_root = test_project_root("builder_api_put_schema_violation");
+        let request = BuilderHttpRequest::new(
+            "PUT",
+            "/api/v1/screens/mock-main",
+            r#"{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock Main Screen","canvas_width":1280,"canvas_height":720,"objects":[{"object_id":"pump-001","svg_asset_id":"pump-symbol","x":80,"y":120,"width":120,"height":120,"modify_rules":[{"property":"visible","binding_key":"state","condition":{"op":"between","min":10}}]}]}"#,
+        );
+
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(400, response.status_code);
+        assert!(payload["error"]
+            .as_str()
+            .expect("error")
+            .contains("invalid screen-definition shape"));
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_get_screen_rejects_invalid_project_file_shape() {
+        let project_root = test_project_root("builder_api_get_invalid_screen_shape");
+        let file_path = project_root
+            .join("config")
+            .join("screens")
+            .join("mock-main.screen.json");
+        std::fs::write(
+            &file_path,
+            r#"{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock","canvas_width":100,"canvas_height":80,"objects":[{"object_id":"pump-001"}]}"#,
+        )
+        .expect("write invalid screen");
+
+        let request = BuilderHttpRequest::new("GET", "/api/v1/screens/mock-main", "");
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(500, response.status_code);
+        assert!(payload["error"]
+            .as_str()
+            .expect("error")
+            .contains("screen definition schema invalid"));
         let _ = std::fs::remove_dir_all(project_root);
     }
 }
