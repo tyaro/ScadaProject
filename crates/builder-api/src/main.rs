@@ -1,4 +1,5 @@
 use scada_core::service::{print_health, ServiceRole};
+use serde_json::json;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodedError {
@@ -16,6 +17,11 @@ fn main() {
 
     if let Some(raw) = arg_value(&args, "--map-error") {
         println!("{}", map_condition_error_message(&raw));
+        return;
+    }
+
+    if let Some(raw) = arg_value(&args, "--map-error-json") {
+        println!("{}", map_condition_error_json(&raw));
         return;
     }
 
@@ -46,22 +52,35 @@ fn parse_coded_error(raw: &str) -> Option<CodedError> {
 }
 
 fn map_condition_error_message(raw: &str) -> String {
+    map_condition_error(raw).user_message
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ConditionErrorMapping {
+    code: Option<String>,
+    path: Option<String>,
+    detail: Option<String>,
+    user_message: String,
+    known_code: bool,
+}
+
+fn map_condition_error(raw: &str) -> ConditionErrorMapping {
     let Some(parsed) = parse_coded_error(raw) else {
-        return raw.to_string();
+        return ConditionErrorMapping {
+            code: None,
+            path: None,
+            detail: None,
+            user_message: raw.to_string(),
+            known_code: false,
+        };
     };
 
-    match parsed.code.as_str() {
+    let message = match parsed.code.as_str() {
         "MODIFY_RULE_CONDITION_MISSING_SELECTOR" => {
-            format!(
-                "invalid modify rule condition at {}: choose op, all, or any",
-                parsed.path
-            )
+            format!("invalid modify rule condition at {}: choose op, all, or any", parsed.path)
         }
         "MODIFY_RULE_CONDITION_VALUE_REQUIRED" => {
-            format!(
-                "invalid modify rule condition at {}: missing value",
-                parsed.path
-            )
+            format!("invalid modify rule condition at {}: missing value", parsed.path)
         }
         "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX" => {
             format!(
@@ -88,7 +107,29 @@ fn map_condition_error_message(raw: &str) -> String {
             )
         }
         _ => raw.to_string(),
+    };
+
+    let known_code = parsed.code.as_str() != "" && !message.eq(raw);
+
+    ConditionErrorMapping {
+        code: Some(parsed.code),
+        path: Some(parsed.path),
+        detail: Some(parsed.detail),
+        user_message: message,
+        known_code,
     }
+}
+
+fn map_condition_error_json(raw: &str) -> String {
+    let mapped = map_condition_error(raw);
+    json!({
+        "code": mapped.code,
+        "path": mapped.path,
+        "detail": mapped.detail,
+        "user_message": mapped.user_message,
+        "known_code": mapped.known_code,
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -123,5 +164,27 @@ mod tests {
     fn map_condition_error_message_keeps_unknown_code_raw() {
         let raw = "code=UNKNOWN_CODE path=object=x property=y detail=unknown";
         assert_eq!(raw, map_condition_error_message(raw));
+    }
+
+    #[test]
+    fn map_condition_error_json_returns_structured_payload() {
+        let raw =
+            "code=MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES path=object=pump-001 property=color detail=op 'in' requires non-empty values";
+        let payload = map_condition_error_json(raw);
+        let value: serde_json::Value = serde_json::from_str(&payload).expect("json");
+
+        assert_eq!(
+            "MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES",
+            value["code"].as_str().expect("code")
+        );
+        assert_eq!(
+            "object=pump-001 property=color",
+            value["path"].as_str().expect("path")
+        );
+        assert_eq!(
+            "invalid modify rule condition at object=pump-001 property=color: in requires non-empty values",
+            value["user_message"].as_str().expect("message")
+        );
+        assert_eq!(Some(true), value["known_code"].as_bool());
     }
 }
