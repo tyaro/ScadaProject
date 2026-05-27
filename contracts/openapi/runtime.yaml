@@ -60,17 +60,9 @@ paths:
                   - values
                   - missing_tag_ids
         "400":
-          description: Invalid snapshot request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Local API token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/UnauthorizedError"
   /api/v1/screens/projection:
     post:
       summary: Fetch the current screen projection for the monitoring UI
@@ -137,23 +129,11 @@ paths:
                   - project_id
                   - object_states
         "400":
-          description: Invalid screen projection request or screen definition
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Local API token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/UnauthorizedError"
         "502":
-          description: Tag Server snapshot fetch failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadGatewayError"
   /api/v1/driver-values:
     post:
       summary: Ingest normalized driver values into the Tag Server cache
@@ -182,23 +162,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/DriverValuesIngestResponse"
         "400":
-          description: Invalid driver value payload
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Local API token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/UnauthorizedError"
         "502":
-          description: Driver values were ingested, but MQTT publish failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DriverValuesPublishFailureResponse"
+          $ref: "#/components/responses/DriverValuesPublishFailed"
   /api/v1/control-commands:
     post:
       summary: Request a tag write/control command
@@ -248,31 +216,46 @@ paths:
                   - command
                   - driver_request
         "400":
-          description: Invalid control command request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequestError"
         "401":
-          description: Local API token is missing or invalid
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/UnauthorizedError"
         "409":
-          description: Control command rejected by write policy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/ConflictError"
         "502":
-          description: Driver Manager write forwarding failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadGatewayError"
 
 components:
+  responses:
+    BadRequestError:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    UnauthorizedError:
+      description: Local API token is missing or invalid
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ConflictError:
+      description: Request conflicts with current state or policy
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadGatewayError:
+      description: Upstream forwarding failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    DriverValuesPublishFailed:
+      description: Driver values were ingested, but MQTT publish failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/DriverValuesPublishFailureResponse"
   schemas:
     ErrorResponse:
       type: object
