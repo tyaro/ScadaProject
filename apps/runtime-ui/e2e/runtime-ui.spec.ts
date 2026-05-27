@@ -73,3 +73,76 @@ test('renders projection and posts control command', async ({ page }) => {
   expect(commandCalls).toBeGreaterThanOrEqual(1)
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
+
+test('re-fetches projection after start command', async ({ page }) => {
+  let projectionCalls = 0
+  let startIssued = false
+  const snapshotStopped = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: false, sequence: 10 }
+            : binding
+        ),
+      },
+    ],
+  }
+  const snapshotRunning = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: true, sequence: 11 }
+            : binding
+        ),
+      },
+    ],
+  }
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    const body = startIssued ? snapshotRunning : snapshotStopped
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    startIssued = true
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Stopped')).toBeVisible()
+
+  const refreshResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/screens/projection') &&
+      response.request().method() === 'POST'
+  )
+  const commandResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/control-commands') &&
+      response.request().method() === 'POST'
+  )
+  await page.getByRole('button', { name: 'Start' }).click()
+  await commandResponse
+  await refreshResponse
+  await expect(page.getByText('command DriverAck')).toBeVisible()
+  expect(startIssued).toBe(true)
+  expect(projectionCalls).toBeGreaterThanOrEqual(2)
+})
