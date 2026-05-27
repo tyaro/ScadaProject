@@ -17,17 +17,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                project_id:
-                  type: string
-                tag_ids:
-                  type: array
-                  items:
-                    type: string
-              required:
-                - project_id
-                - tag_ids
+              $ref: "#/components/schemas/TagSnapshotRequest"
       responses:
         "200":
           $ref: "#/components/responses/TagSnapshotOk"
@@ -44,11 +34,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                screen_path:
-                  type: string
-                  description: Local screen definition path used by the phase 1 preview runtime.
+              $ref: "#/components/schemas/ScreenProjectionRequest"
       responses:
         "200":
           $ref: "#/components/responses/ScreenProjectionOk"
@@ -67,17 +53,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                project_id:
-                  type: string
-                values:
-                  type: array
-                  items:
-                    $ref: "../schemas/tag-value.schema.json"
-              required:
-                - project_id
-                - values
+              $ref: "#/components/schemas/DriverValuesIngestRequest"
       responses:
         "202":
           $ref: "#/components/responses/DriverValuesAccepted"
@@ -171,6 +147,36 @@ components:
           schema:
             $ref: "#/components/schemas/DriverValuesPublishFailureResponse"
   schemas:
+    TagSnapshotRequest:
+      type: object
+      properties:
+        project_id:
+          type: string
+        tag_ids:
+          type: array
+          items:
+            type: string
+      required:
+        - project_id
+        - tag_ids
+    ScreenProjectionRequest:
+      type: object
+      properties:
+        screen_path:
+          type: string
+          description: Local screen definition path used by the phase 1 preview runtime.
+    DriverValuesIngestRequest:
+      type: object
+      properties:
+        project_id:
+          type: string
+        values:
+          type: array
+          items:
+            $ref: "../schemas/tag-value.schema.json"
+      required:
+        - project_id
+        - values
     HealthResponse:
       type: object
       properties:
