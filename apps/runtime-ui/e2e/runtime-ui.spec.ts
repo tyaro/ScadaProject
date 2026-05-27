@@ -225,3 +225,38 @@ test('re-fetches projection after stop command', async ({ page }) => {
   expect(stopIssued).toBe(true)
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
+
+test('shows error when control command fails', async ({ page }) => {
+  let projectionCalls = 0
+  let commandCalls = 0
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    commandCalls += 1
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'driver manager unavailable',
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByText('driver manager unavailable')).toBeVisible()
+
+  expect(commandCalls).toBeGreaterThanOrEqual(1)
+  // Initial snapshot only. Failure path should not perform an extra refresh.
+  expect(projectionCalls).toBe(1)
+})

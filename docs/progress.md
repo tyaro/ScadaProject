@@ -147,6 +147,7 @@
   - APIはPlaywright routeでモックし、UI回帰をバックエンド依存なしで実行可能にした
   - Start操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
   - Stop操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
+  - ControlCommand失敗時にエラー表示へ遷移することを回帰テストへ追加
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -360,6 +361,9 @@
 - `cd apps/runtime-ui && npm run test:e2e`（Stop後projection再取得シナリオ追加後）: 成功
   - `re-fetches projection after stop command` で `requested_value=false` のControlCommand送信とprojection再取得を確認
   - E2E合計 `3 passed`
+- `cd apps/runtime-ui && npm run test:e2e`（ControlCommand失敗シナリオ追加後）: 成功
+  - `shows error when control command fails` で `502` 応答時のエラー表示を確認
+  - E2E合計 `4 passed`
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
