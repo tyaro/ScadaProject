@@ -35,6 +35,28 @@ pub struct SupervisedServiceStatus {
     pub message: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PickScreenRelativePathResult {
+    pub cancelled: bool,
+    pub relative_path: Option<String>,
+}
+
+impl PickScreenRelativePathResult {
+    pub fn cancelled() -> Self {
+        Self {
+            cancelled: true,
+            relative_path: None,
+        }
+    }
+
+    pub fn selected(relative_path: String) -> Self {
+        Self {
+            cancelled: false,
+            relative_path: Some(relative_path),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SupervisedChild {
     pub service: String,
@@ -258,6 +280,67 @@ pub fn mask_token(token: &str) -> String {
     format!("{}...{}", &token[..6], &token[token.len() - 4..])
 }
 
+pub fn normalize_relative_screen_path(
+    project_root: &Path,
+    absolute_path: &Path,
+) -> Result<String, String> {
+    if !project_root.is_absolute() {
+        return Err("project_root must be absolute".to_string());
+    }
+    if !absolute_path.is_absolute() {
+        return Err("absolute_path must be absolute".to_string());
+    }
+
+    let relative = absolute_path
+        .strip_prefix(project_root)
+        .map_err(|_| "selected path is outside project root".to_string())?;
+    let normalized = relative
+        .components()
+        .map(|component| match component {
+            std::path::Component::Normal(part) => part.to_string_lossy().into_owned(),
+            _ => String::new(),
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("/");
+
+    if !is_valid_screen_relative_path(&normalized) {
+        return Err(
+            "relative_path must match config/screens/*.screen.json and disallow traversal"
+                .to_string(),
+        );
+    }
+
+    Ok(normalized)
+}
+
+pub fn is_valid_screen_relative_path(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.contains("..") || trimmed.contains("//") || trimmed.contains('\\') {
+        return false;
+    }
+
+    let Some(without_prefix) = trimmed.strip_prefix("config/screens/") else {
+        return false;
+    };
+    let Some(body) = without_prefix.strip_suffix(".screen.json") else {
+        return false;
+    };
+    if body.is_empty() || body.starts_with('/') || body.ends_with('/') {
+        return false;
+    }
+
+    body.split('/').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,5 +427,50 @@ mod tests {
         };
 
         child.stop().expect("stop process");
+    }
+
+    #[test]
+    fn screen_relative_path_validator_accepts_valid_path() {
+        assert!(is_valid_screen_relative_path(
+            "config/screens/mock-main.screen.json"
+        ));
+        assert!(is_valid_screen_relative_path(
+            "config/screens/custom/mock-main.screen.json"
+        ));
+    }
+
+    #[test]
+    fn screen_relative_path_validator_rejects_invalid_path() {
+        assert!(!is_valid_screen_relative_path(""));
+        assert!(!is_valid_screen_relative_path("config/screens/.screen.json"));
+        assert!(!is_valid_screen_relative_path(
+            "config/screens/mock.main.screen.json"
+        ));
+        assert!(!is_valid_screen_relative_path(
+            "config/screens/../mock-main.screen.json"
+        ));
+        assert!(!is_valid_screen_relative_path(
+            "config/screens/mock-main.json"
+        ));
+    }
+
+    #[test]
+    fn normalize_relative_screen_path_returns_project_relative_path() {
+        let project_root = Path::new("/tmp/scada-project");
+        let absolute = Path::new("/tmp/scada-project/config/screens/mock-main.screen.json");
+
+        let path = normalize_relative_screen_path(project_root, absolute).expect("normalize path");
+
+        assert_eq!("config/screens/mock-main.screen.json", path);
+    }
+
+    #[test]
+    fn normalize_relative_screen_path_rejects_outside_project_root() {
+        let project_root = Path::new("/tmp/scada-project");
+        let absolute = Path::new("/tmp/other/config/screens/mock-main.screen.json");
+
+        let error = normalize_relative_screen_path(project_root, absolute).expect_err("must reject");
+
+        assert!(error.contains("outside project root"));
     }
 }
