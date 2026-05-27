@@ -446,6 +446,34 @@ Runtime UIはAPIエラー本文を次の優先順位で解釈する。
 - 未知の `code` は生メッセージへフォールバックし、UI実装の先行配布時でも最低限の原因把握を可能にする。
 - Builder UIは編集フォーム上の該当ruleへフォーカスできるよう、`path` の機械解釈（`object=<id> property=<name>`）を維持する。
 
+#### Builder API 構造化マッピング出力仕様
+
+Builder UI着手前の共通インターフェースとして、Builder APIは `code/path/detail` をユーザー向け表示へ変換したJSONを返せるものとする。
+
+- 入力: `code=<...> path=<...> detail=<...>` 形式の生エラー文字列
+- 出力: `code`, `path`, `detail`, `user_message`, `known_code` を持つJSON
+- 未知コードの場合は `known_code=false` とし、`user_message` に生メッセージをそのまま入れる
+
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| `code` | string \\| null | 解析できたエラーコード |
+| `path` | string \\| null | 該当ruleの位置情報（例: `object=pump-001 property=color`） |
+| `detail` | string \\| null | 実装側の詳細理由 |
+| `user_message` | string | UI表示向けメッセージ |
+| `known_code` | boolean | 既知コードとして変換できたか |
+
+```json
+{
+    "code": "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX",
+    "path": "object=pump-001 property=color",
+    "detail": "op 'between' requires min and max",
+    "user_message": "invalid modify rule condition at object=pump-001 property=color: between requires min and max",
+    "known_code": true
+}
+```
+
+Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_code=false` のときは `user_message` をそのまま表示する。
+
 ### OpenAPI共通コンポーネント運用ルール
 
 - `contracts/openapi/runtime.yaml` の `paths` では、成功応答、失敗応答ともに `components.responses` の `$ref` を優先して使用する。

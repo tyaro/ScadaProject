@@ -230,6 +230,7 @@ Runtime API境界テストを強化
   - 基本設計書にconditionバリデーションのエラーコード一覧と、Runtime UI/Builder UIで共有する表示マッピング表を追加した
   - Builder APIに `code/path/detail` 解析と共通エラーマッピング処理を追加し、未知コードフォールバックを含むユニットテストで固定化した
   - Builder APIに `--map-error-json` を追加し、`code/path/detail/user_message/known_code` をJSONで返す構造化出力を実装した
+  - 基本設計書にBuilder APIの構造化マッピング出力仕様（`code/path/detail/user_message/known_code`）を追記し、未知コード時の表示方針を明文化した
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
@@ -337,7 +338,7 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
-2. Builder UI本体着手時に `--map-error-json` 相当の構造（`user_message`, `known_code`）を直接利用する表示層を追加する。
+2. Builder UI本体着手時に、`known_code` の真偽で表示テンプレートを切り替えるエラー表示コンポーネントを追加する。
 
 ## フェーズ0完了条件棚卸し
 
