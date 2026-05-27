@@ -1,10 +1,15 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import {
+    isBuilderSaveScreenResponse,
     isBuilderErrorMapResponse,
     isBuilderErrorResponse,
+    isSerializedScreenDefinition,
     type BuilderErrorMapRequest,
     type BuilderErrorMapResponse,
+    type SerializedScreenDefinition,
+    type SerializedScreenObject,
+    type ScreenModifyRuleCondition,
   } from './contracts/builderApi'
 
   type ParsedTargetPath = {
@@ -34,45 +39,6 @@
     height: number
     tagBindings: Record<string, string>
     modifyRules: ModifyRuleForm[]
-  }
-
-  type ScreenModifyRuleCondition = {
-    op?: string
-    value?: unknown
-    min?: number
-    max?: number
-    values?: unknown[]
-    all?: ScreenModifyRuleCondition[]
-    any?: ScreenModifyRuleCondition[]
-  }
-
-  type ScreenModifyRuleDefinition = {
-    property: string
-    binding_key: string
-    true_value: string
-    false_value: string
-    condition: ScreenModifyRuleCondition
-  }
-
-  type SerializedScreenObject = {
-    object_id: string
-    svg_asset_id: string
-    x: number
-    y: number
-    width: number
-    height: number
-    tag_bindings: Record<string, string>
-    modify_rules: ScreenModifyRuleDefinition[]
-  }
-
-  type SerializedScreenDefinition = {
-    schema_version: string
-    screen_id: string
-    project_id: string
-    name: string
-    canvas_width: number
-    canvas_height: number
-    objects: SerializedScreenObject[]
   }
 
   const sampleKnownError =
@@ -417,23 +383,6 @@
     }
   }
 
-  function isSerializedScreenDefinition(value: unknown): value is SerializedScreenDefinition {
-    if (!value || typeof value !== 'object') {
-      return false
-    }
-
-    const record = value as Record<string, unknown>
-    return (
-      typeof record.schema_version === 'string' &&
-      typeof record.screen_id === 'string' &&
-      typeof record.project_id === 'string' &&
-      typeof record.name === 'string' &&
-      typeof record.canvas_width === 'number' &&
-      typeof record.canvas_height === 'number' &&
-      Array.isArray(record.objects)
-    )
-  }
-
   function downloadScreenDefinition() {
     const screen = buildScreenDefinition()
     const blob = new Blob([JSON.stringify(screen, null, 2)], { type: 'application/json' })
@@ -461,17 +410,7 @@
         throw new Error('invalid screen-definition shape')
       }
 
-      schemaVersion = parsed.schema_version
-      screenId = parsed.screen_id
-      projectId = parsed.project_id
-      screenName = parsed.name
-      canvasWidth = parsed.canvas_width
-      canvasHeight = parsed.canvas_height
-
-      const mappedObjects = parsed.objects.map((item) => mapLoadedObject(item as SerializedScreenObject))
-      screenObjects = mappedObjects.length > 0 ? mappedObjects : [emptyObject('draft-object')]
-      selectedObjectIndex = 0
-      selectedRuleIndex = 0
+      applyLoadedScreenDefinition(parsed)
       ioStatus = `Loaded ${file.name}`
     } catch (error) {
       ioStatus = error instanceof Error ? `Load failed: ${error.message}` : 'Load failed'
@@ -482,6 +421,67 @@
 
   function openLoadDialog() {
     jsonFileInput?.click()
+  }
+
+  function applyLoadedScreenDefinition(parsed: SerializedScreenDefinition) {
+    schemaVersion = parsed.schema_version
+    screenId = parsed.screen_id
+    projectId = parsed.project_id
+    screenName = parsed.name
+    canvasWidth = parsed.canvas_width
+    canvasHeight = parsed.canvas_height
+
+    const mappedObjects = parsed.objects.map((item) => mapLoadedObject(item as SerializedScreenObject))
+    screenObjects = mappedObjects.length > 0 ? mappedObjects : [emptyObject('draft-object')]
+    selectedObjectIndex = 0
+    selectedRuleIndex = 0
+  }
+
+  async function loadScreenDefinitionFromProject() {
+    ioStatus = `Loading ${screenId} from project...`
+    try {
+      const httpResponse = await fetch(`/api/v1/screens/${encodeURIComponent(screenId)}`)
+      if (!httpResponse.ok) {
+        const errorBody = await parseError(httpResponse)
+        throw new Error(errorBody)
+      }
+
+      const body = await httpResponse.json()
+      if (!isSerializedScreenDefinition(body)) {
+        throw new Error('builder api returned invalid screen-definition contract')
+      }
+
+      applyLoadedScreenDefinition(body)
+      ioStatus = `Loaded ${body.screen_id} from project`
+    } catch (error) {
+      ioStatus = error instanceof Error ? `Project load failed: ${error.message}` : 'Project load failed'
+    }
+  }
+
+  async function saveScreenDefinitionToProject() {
+    ioStatus = `Saving ${screenId} to project...`
+    try {
+      const payload = buildScreenDefinition()
+      const httpResponse = await fetch(`/api/v1/screens/${encodeURIComponent(payload.screen_id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!httpResponse.ok) {
+        const errorBody = await parseError(httpResponse)
+        throw new Error(errorBody)
+      }
+
+      const body = await httpResponse.json()
+      if (!isBuilderSaveScreenResponse(body)) {
+        throw new Error('builder api returned invalid save response contract')
+      }
+
+      ioStatus = `Saved to ${body.saved_path}`
+    } catch (error) {
+      ioStatus = error instanceof Error ? `Project save failed: ${error.message}` : 'Project save failed'
+    }
   }
 
   function selectedObject(): ScreenObjectForm {
@@ -690,6 +690,12 @@
         </button>
         <button class="secondary" type="button" data-testid="download-screen-button" onclick={downloadScreenDefinition}>
           Download screen JSON
+        </button>
+        <button class="secondary" type="button" data-testid="load-project-screen-button" onclick={loadScreenDefinitionFromProject}>
+          Load from project
+        </button>
+        <button class="secondary" type="button" data-testid="save-project-screen-button" onclick={saveScreenDefinitionToProject}>
+          Save to project
         </button>
       </div>
 

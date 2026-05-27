@@ -239,6 +239,10 @@ Runtime API境界テストを強化
   - Builder UI の Builder API 呼び出しを `apps/builder-ui/src/contracts/builderApi.ts` の契約型（request/response + shape guard）経由に変更し、`contracts/openapi/builder.yaml` と合わせた入出力を明示化した
   - Builder UI に Screen Object Editor から `screen-definition` 形式へ変換する最小シリアライズ（`schema_version/screen_id/project_id/objects/modify_rules.condition`）を追加し、JSONプレビューで保存前確認できるようにした
   - Builder UI に最小I/O導線として `Load screen JSON`（ファイル読込）と `Download screen JSON`（生成JSON保存）を追加し、`screen-definition` の読み書き往復をブラウザ上で確認できるようにした
+  - Builder API に `GET/PUT /api/v1/screens/{screen_id}` を追加し、project `config/screens/{screen_id}.screen.json` の読込・保存を最小契約で扱えるようにした（`screen_id` バリデーションと body/path 一致検証を含む）
+  - Builder UI に `Load from project` / `Save to project` を追加し、Builder API 経由で `screen-definition` を読込・保存できるようにした
+  - `apps/builder-ui` の Playwright 回帰テストに Builder API 経由の screen load/save シナリオを追加し、既存の map/load/download 回帰と合わせて4ケースで固定化した
+  - Builder API の単体テストを `GET/PUT /api/v1/screens/{screen_id}` まで拡張し、health/error-map と合わせて 10 ケースで契約境界を固定化した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -348,8 +352,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. Builder UI の file I/O 導線を Tauri/Builder API 経由の実保存（`config/screens/mock-main.screen.json` 更新）へ接続し、ダウンロード依存を段階的に解消する。
-2. Builder API 契約ドリフト検出を強化するため、`contracts/openapi/builder.yaml` の shape 検証をローカルCI手順へ統合する。
+1. Builder API 契約ドリフト検出を強化するため、`contracts/openapi/builder.yaml` の shape 検証をローカルCI手順へ統合する。
+2. Builder UI の project save を Tauri Shell 側のファイル選択/保存UX（保存先表示・失敗理由提示）と接続し、運用向け導線を整える。
 
 ## フェーズ0完了条件棚卸し
 
@@ -378,9 +382,9 @@ Runtime API境界テストを強化
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
 - `nvm use 24 && node --version`: `v24.16.0`
 - `cd apps/builder-ui && npm run check`: 成功
-- `cd apps/builder-ui && npm run test:e2e`: 成功（2 passed）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（4 passed）
 - `ruby -e "require 'yaml'; YAML.load_file('contracts/openapi/builder.yaml')"`: 成功
-- `cargo test -p builder-api`: 成功（7 passed）
+- `cargo test -p builder-api`: 成功（10 passed）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
 - `GH_PAGER=cat gh run view 26506251734 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`rust-toolchain.toml` の channel が `stable-aarch64-apple-darwin`）
 - `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功

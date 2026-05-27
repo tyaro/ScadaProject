@@ -130,3 +130,68 @@ test('loads and downloads screen-definition json', async ({ page }) => {
   await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"screen_id": "loaded-screen"/)
   await expect(page.getByTestId('screen-json-preview')).toHaveValue(/"object_id": "tank-001"/)
 })
+
+test('loads and saves screen-definition via builder api', async ({ page }) => {
+  await page.route('**/api/v1/screens/mock-main', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          schema_version: '1.0.0',
+          screen_id: 'mock-main',
+          project_id: 'demo',
+          name: 'Mock Main Screen',
+          canvas_width: 1280,
+          canvas_height: 720,
+          objects: [
+            {
+              object_id: 'project-pump-001',
+              svg_asset_id: 'pump-symbol',
+              x: 80,
+              y: 120,
+              width: 120,
+              height: 120,
+              tag_bindings: {
+                value: 'mock.temperature.001',
+              },
+              modify_rules: [
+                {
+                  property: 'color',
+                  binding_key: 'value',
+                  true_value: '#cc3333',
+                  false_value: '#3cb371',
+                  condition: {
+                    op: 'gt',
+                    value: 24,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      })
+      return
+    }
+
+    const payload = JSON.parse(route.request().postData() ?? '{}') as Record<string, unknown>
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        saved_path: `config/screens/${String(payload.screen_id ?? 'unknown')}.screen.json`,
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await page.getByTestId('load-project-screen-button').click()
+  await expect(page.getByTestId('io-status')).toContainText('Loaded mock-main from project')
+  await expect(page.getByTestId('object-field')).toHaveValue('project-pump-001')
+  await expect(page.getByTestId('condition-op-field')).toHaveValue('gt')
+  await expect(page.getByTestId('condition-value-field')).toHaveValue('24')
+
+  await page.getByTestId('save-project-screen-button').dispatchEvent('click')
+  await expect(page.getByTestId('io-status')).toContainText('Saved to config/screens/mock-main.screen.json')
+})

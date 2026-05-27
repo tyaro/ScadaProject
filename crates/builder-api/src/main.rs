@@ -1,5 +1,7 @@
+use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 
 use scada_core::service::{print_health, ServiceRole};
 use serde::{Deserialize, Serialize};
@@ -23,6 +25,11 @@ struct ConditionErrorMapping {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ErrorMapRequest {
     error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct SaveScreenResponse {
+    saved_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +144,14 @@ fn parse_http_request(raw: &str) -> Result<BuilderHttpRequest, String> {
 }
 
 fn handle_builder_request(request: &BuilderHttpRequest) -> BuilderHttpResponse {
+    let project_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    handle_builder_request_with_project_root(request, &project_root)
+}
+
+fn handle_builder_request_with_project_root(
+    request: &BuilderHttpRequest,
+    project_root: &Path,
+) -> BuilderHttpResponse {
     if request.method == "GET" && request.path_without_query() == "/health" {
         return BuilderHttpResponse::json(
             200,
@@ -162,7 +177,123 @@ fn handle_builder_request(request: &BuilderHttpRequest) -> BuilderHttpResponse {
         };
     }
 
+    if let Some(screen_id) = screen_id_from_path(request.path_without_query()) {
+        if !is_valid_screen_id(screen_id) {
+            return BuilderHttpResponse::json(400, error_json("invalid screen id"));
+        }
+
+        if request.method == "GET" {
+            let path = screen_file_path(project_root, screen_id);
+            return match fs::read_to_string(&path) {
+                Ok(body) => BuilderHttpResponse::json(200, body),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    BuilderHttpResponse::json(404, error_json("screen definition not found"))
+                }
+                Err(error) => BuilderHttpResponse::json(500, error_json(&error.to_string())),
+            };
+        }
+
+        if request.method == "PUT" {
+            let parsed: serde_json::Value = match serde_json::from_str(&request.body) {
+                Ok(value) => value,
+                Err(error) => {
+                    return BuilderHttpResponse::json(
+                        400,
+                        error_json(&format!("invalid screen-definition JSON: {error}")),
+                    );
+                }
+            };
+
+            if !is_screen_definition_shape(&parsed) {
+                return BuilderHttpResponse::json(
+                    400,
+                    error_json("invalid screen-definition shape"),
+                );
+            }
+
+            if parsed["screen_id"].as_str() != Some(screen_id) {
+                return BuilderHttpResponse::json(
+                    400,
+                    error_json("screen_id in body must match path"),
+                );
+            }
+
+            let screens_dir = project_root.join("config").join("screens");
+            if let Err(error) = fs::create_dir_all(&screens_dir) {
+                return BuilderHttpResponse::json(500, error_json(&error.to_string()));
+            }
+
+            let normalized = match serde_json::to_string_pretty(&parsed) {
+                Ok(value) => value,
+                Err(error) => {
+                    return BuilderHttpResponse::json(500, error_json(&error.to_string()));
+                }
+            };
+
+            let path = screen_file_path(project_root, screen_id);
+            if let Err(error) = fs::write(&path, normalized + "\n") {
+                return BuilderHttpResponse::json(500, error_json(&error.to_string()));
+            }
+
+            let response = SaveScreenResponse {
+                saved_path: format!("config/screens/{}.screen.json", screen_id),
+            };
+            return match serde_json::to_string(&response) {
+                Ok(body) => BuilderHttpResponse::json(200, body),
+                Err(error) => BuilderHttpResponse::json(500, error_json(&error.to_string())),
+            };
+        }
+    }
+
     BuilderHttpResponse::json(404, error_json("not found"))
+}
+
+fn is_screen_definition_shape(value: &serde_json::Value) -> bool {
+    let Some(record) = value.as_object() else {
+        return false;
+    };
+
+    record.get("schema_version").and_then(|item| item.as_str()).is_some()
+        && record.get("screen_id").and_then(|item| item.as_str()).is_some()
+        && record.get("project_id").and_then(|item| item.as_str()).is_some()
+        && record.get("name").and_then(|item| item.as_str()).is_some()
+        && record
+            .get("canvas_width")
+            .and_then(|item| item.as_i64())
+            .is_some()
+        && record
+            .get("canvas_height")
+            .and_then(|item| item.as_i64())
+            .is_some()
+        && record
+            .get("objects")
+            .and_then(|item| item.as_array())
+            .is_some()
+}
+
+fn screen_id_from_path(path: &str) -> Option<&str> {
+    const PREFIX: &str = "/api/v1/screens/";
+    if !path.starts_with(PREFIX) {
+        return None;
+    }
+    let id = &path[PREFIX.len()..];
+    if id.is_empty() || id.contains('/') {
+        return None;
+    }
+    Some(id)
+}
+
+fn is_valid_screen_id(screen_id: &str) -> bool {
+    screen_id
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn screen_file_path(project_root: &Path, screen_id: &str) -> PathBuf {
+    project_root
+        .join("config")
+        .join("screens")
+        .join(format!("{}.screen.json", screen_id))
 }
 
 fn error_json(message: &str) -> String {
@@ -395,5 +526,84 @@ mod tests {
             .as_str()
             .expect("error")
             .contains("invalid error map JSON"));
+    }
+
+    fn test_project_root(test_name: &str) -> PathBuf {
+        let unique = format!(
+            "{}_{}_{}",
+            test_name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(path.join("config").join("screens")).expect("create test dir");
+        path
+    }
+
+    #[test]
+    fn handle_builder_request_get_screen_returns_project_file() {
+        let project_root = test_project_root("builder_api_get_screen");
+        let file_path = project_root
+            .join("config")
+            .join("screens")
+            .join("mock-main.screen.json");
+        std::fs::write(
+            &file_path,
+            r#"{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock","canvas_width":100,"canvas_height":80,"objects":[]}"#,
+        )
+        .expect("write screen");
+
+        let request = BuilderHttpRequest::new("GET", "/api/v1/screens/mock-main", "");
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(200, response.status_code);
+        assert_eq!(Some("mock-main"), payload["screen_id"].as_str());
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_put_screen_writes_project_file() {
+        let project_root = test_project_root("builder_api_put_screen");
+        let request = BuilderHttpRequest::new(
+            "PUT",
+            "/api/v1/screens/mock-main",
+            r#"{"schema_version":"1.0.0","screen_id":"mock-main","project_id":"demo","name":"Mock Main Screen","canvas_width":1280,"canvas_height":720,"objects":[]}"#,
+        );
+
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+        let saved_path = project_root
+            .join("config")
+            .join("screens")
+            .join("mock-main.screen.json");
+
+        assert_eq!(200, response.status_code);
+        assert_eq!(Some("config/screens/mock-main.screen.json"), payload["saved_path"].as_str());
+        assert!(saved_path.exists());
+        let _ = std::fs::remove_dir_all(project_root);
+    }
+
+    #[test]
+    fn handle_builder_request_put_screen_rejects_mismatched_screen_id() {
+        let project_root = test_project_root("builder_api_put_mismatch");
+        let request = BuilderHttpRequest::new(
+            "PUT",
+            "/api/v1/screens/mock-main",
+            r#"{"schema_version":"1.0.0","screen_id":"other-screen","project_id":"demo","name":"Mock Main Screen","canvas_width":1280,"canvas_height":720,"objects":[]}"#,
+        );
+
+        let response = handle_builder_request_with_project_root(&request, &project_root);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(400, response.status_code);
+        assert!(payload["error"]
+            .as_str()
+            .expect("error")
+            .contains("screen_id in body must match path"));
+        let _ = std::fs::remove_dir_all(project_root);
     }
 }

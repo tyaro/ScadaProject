@@ -24,6 +24,34 @@ paths:
           $ref: "#/components/responses/ErrorMapOk"
         "400":
           $ref: "#/components/responses/BadRequestError"
+  /api/v1/screens/{screen_id}:
+    parameters:
+      - name: screen_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Screen identifier (ASCII alnum, `-`, `_`).
+    get:
+      summary: Load screen-definition JSON from project config/screens
+      responses:
+        "200":
+          $ref: "#/components/responses/ScreenDefinitionOk"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    put:
+      summary: Save screen-definition JSON to project config/screens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScreenDefinition"
+      responses:
+        "200":
+          $ref: "#/components/responses/SaveScreenOk"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
 
 components:
   responses:
@@ -45,6 +73,24 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    NotFoundError:
+      description: Requested screen definition does not exist
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ScreenDefinitionOk:
+      description: Screen definition returned from project file
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ScreenDefinition"
+    SaveScreenOk:
+      description: Save result for screen definition update
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SaveScreenResponse"
   schemas:
     HealthResponse:
       type: object
@@ -104,3 +150,13 @@ components:
           example: "invalid error map JSON: missing field `error` at line 1 column 2"
       required:
         - error
+    SaveScreenResponse:
+      type: object
+      properties:
+        saved_path:
+          type: string
+          example: config/screens/mock-main.screen.json
+      required:
+        - saved_path
+    ScreenDefinition:
+      $ref: "../schemas/screen-definition.schema.json"

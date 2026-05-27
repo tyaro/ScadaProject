@@ -491,26 +491,28 @@ Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_co
 
 また、Editor 上の入力値は `screen-definition.schema.json` に沿う最小シリアライズへ変換し、保存前にJSONプレビューとして確認できるようにする。
 
-最小I/O段階では、Builder UI は生成した `screen-definition` JSON のファイル読込（Load）とファイル保存（Download）を提供し、Tauri/Builder API 経由の実保存に移行する前の往復確認を行う。
+最小I/O段階では、Builder UI は生成した `screen-definition` JSON のファイル読込（Load）とファイル保存（Download）を提供する。続く段階で Builder API の `GET/PUT /api/v1/screens/{screen_id}` を使った project `config/screens` への読込・保存導線を追加し、UI上の編集結果を同一契約で往復できるようにする。
 
 #### Builder API エラーマッピングHTTPエンドポイント
 
 Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。
 
 - `POST /api/v1/errors/map`
+- `GET /api/v1/screens/{screen_id}`
+- `PUT /api/v1/screens/{screen_id}`
 - request body: `{"error":"code=... path=... detail=..."}`
-- response body: 構造化マッピング出力仕様と同じ JSON
+- response body: エラーマッピングは構造化マッピング出力仕様と同じ JSON、screen入出力は `screen-definition` JSON と `{"saved_path":"..."}`
 - 不正JSONは `400` で `{"error":"invalid error map JSON: ..."}` を返す
 
 このエンドポイントは Builder UI 実装初期のエラー表示統一に使い、将来UI内へ同等ロジックを内包しても契約は維持する。
 
 ローカル同梱サービスでは、Builder API を `--serve --addr 127.0.0.1:18110` で常駐起動し、Builder UI から直接このエンドポイントを利用できるようにする。
 
-Builder API のHTTP契約は [contracts/openapi/builder.yaml](contracts/openapi/builder.yaml) を正本とし、`/health` と `POST /api/v1/errors/map` の request/response はこの OpenAPI に従って管理する。
+Builder API のHTTP契約は [contracts/openapi/builder.yaml](contracts/openapi/builder.yaml) を正本とし、`/health`、`POST /api/v1/errors/map`、`GET/PUT /api/v1/screens/{screen_id}` の request/response はこの OpenAPI に従って管理する。
 
 Builder UI 側では `apps/builder-ui/src/contracts/builderApi.ts` を契約型の取り込み窓口とし、request/response の shape guard により `POST /api/v1/errors/map` の入出力を実行時にも検証する。
 
-実装側では、少なくとも `/health` と `POST /api/v1/errors/map` のステータスコード、`application/json`、必須フィールド形を境界テストで固定し、OpenAPI と実装のドリフトを早期に検出する。
+実装側では、少なくとも `/health`、`POST /api/v1/errors/map`、`GET/PUT /api/v1/screens/{screen_id}` のステータスコード、`application/json`、必須フィールド形を境界テストで固定し、OpenAPI と実装のドリフトを早期に検出する。
 
 ### OpenAPI共通コンポーネント運用ルール
 
