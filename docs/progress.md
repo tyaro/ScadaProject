@@ -137,6 +137,9 @@
   - 周期投入と書き込みフィードバックで同じ `ValueNormalizer` を共有し、sequenceを単調増加
   - Tag ServerのControlCommand処理と自己待ちしないよう、Driver Manager側の値フィードバックは非同期実行
   - `Runtime REST API -> Tag Server -> Driver Manager -> Tag Server driver-values -> MQTT delta` を確認
+- Runtime API境界テストを強化
+  - `projection` と `control-command` を同一Runtime APIインスタンスで連続処理するテストを追加
+  - モックTag Server TCPサーバで `POST /api/v1/tags/snapshot` と `POST /api/v1/control-commands` の転送を検証
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -341,6 +344,8 @@
 - `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`: 成功
 - `cd apps/runtime-ui && npm run check`: 成功
 - `cd apps/runtime-ui && npm run build`: 成功
+- `cargo test -p preview-runtime -p driver-manager -p tag-server`（Runtime API境界テスト追加後）: 成功
+  - `runtime_api_handles_projection_and_control_command_with_same_client` を追加し、同一Runtime APIでの連続処理を確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功

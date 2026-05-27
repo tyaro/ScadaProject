@@ -1275,6 +1275,70 @@ mod tests {
     }
 
     #[test]
+    fn runtime_api_handles_projection_and_control_command_with_same_client() {
+        let screen_path = std::env::temp_dir().join(format!(
+            "scada-preview-runtime-screen-dual-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &screen_path,
+            r#"{"schema_version":"1.0.0","screen_id":"main","project_id":"demo","name":"Main","canvas_width":1280,"canvas_height":720,"objects":[{"object_id":"pump-001","svg_asset_id":"pump","x":0.0,"y":0.0,"width":100.0,"height":100.0,"tag_bindings":{"state":"mock.running.001"}}]}"#,
+        )
+        .expect("write screen");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut snapshot_stream, _) = listener.accept().expect("snapshot accept");
+            let snapshot_request =
+                read_runtime_http_request(&mut snapshot_stream).expect("snapshot request");
+            assert_eq!("POST", snapshot_request.method);
+            assert_eq!("/api/v1/tags/snapshot", snapshot_request.path);
+            let snapshot_body = r#"{"values":[{"tag_id":"mock.running.001","value":false,"data_type":"boolean","quality":"Simulated","source_timestamp":"1970-01-01T00:00:01Z","server_timestamp":"1970-01-01T00:00:01Z","sequence":3,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}],"missing_tag_ids":[]}"#;
+            let snapshot_response = RuntimeHttpResponse::json(200, snapshot_body.to_string());
+            snapshot_stream
+                .write_all(&snapshot_response.to_http_bytes())
+                .expect("snapshot write");
+            drop(snapshot_stream);
+
+            let (mut command_stream, _) = listener.accept().expect("command accept");
+            let command_request =
+                read_runtime_http_request(&mut command_stream).expect("command request");
+            assert_eq!("POST", command_request.method);
+            assert_eq!("/api/v1/control-commands", command_request.path);
+            assert!(command_request.body.contains(r#""command_id":"cmd-1""#));
+            let command_body = r#"{"command":{"status":"DriverAck"},"driver_request":{"command_id":"cmd-1","tag_id":"mock.running.001","value":"true"},"driver_response":{"command_id":"cmd-1","accepted":true,"message":"accepted"}}"#;
+            let command_response = RuntimeHttpResponse::json(202, command_body.to_string());
+            command_stream
+                .write_all(&command_response.to_http_bytes())
+                .expect("command write");
+            drop(command_stream);
+        });
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}")).expect("client"),
+        )
+        .with_default_screen_path(screen_path.clone());
+
+        let projection_response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{}"#,
+        ));
+        let command_response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            r#"{"command_id":"cmd-1","idempotency_key":"key-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#,
+        ));
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(200, projection_response.status_code);
+        assert!(projection_response.body.contains(r#""screen_id":"main""#));
+        assert_eq!(202, command_response.status_code);
+        assert!(command_response.body.contains("DriverAck"));
+    }
+
+    #[test]
     fn summary_formats_values_and_missing_tags() {
         let snapshot = TagSnapshot {
             values: vec![RuntimeTagValue {
