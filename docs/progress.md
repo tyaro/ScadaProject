@@ -151,6 +151,12 @@
   - `projection` でTag Server応答のステータス行欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `projection` でTag Server応答のHTTPバージョン不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `projection` でTag Server応答のステータスコード不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server接続拒否時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答遅延（read timeout）時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答のHTTPヘッダ終端欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答のステータス行欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答のHTTPバージョン不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答のステータスコード不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -282,7 +288,7 @@
 
 ## 次に行うこと
 
-1. フェーズ1作業として、Preview RuntimeのControlCommand経路でもTag Serverの接続拒否/応答遅延時に `502` へ正規化されることを境界テストで検証する。
+1. フェーズ1作業として、Runtime API契約テストをOpenAPI観点で拡張し、`control-command` / `projection` のエラー本文互換性（JSON errorフォーマット）を固定化する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -322,6 +328,8 @@
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server応答遅延時 `502` 境界テストを含む）
 - `cargo test -p preview-runtime`: 成功（Tag Server不正HTTPレスポンス時 `502` 境界テストを含む）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server不正HTTPレスポンス4ケースを含む15件）
+- `cargo test -p preview-runtime`: 成功（`control-command` のTag Server接続拒否時 `502` 境界テストを含む）
+- `cargo test -p preview-runtime -- --ignored`: 成功（`control-command` のTag Server応答遅延/不正HTTPレスポンス4ケースを含む20件）
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）

@@ -1265,6 +1265,109 @@ mod tests {
     }
 
     #[test]
+    fn runtime_api_returns_bad_gateway_when_control_command_connection_is_refused() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        drop(listener);
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(100)),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            valid_control_command_json(),
+        ));
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("io error"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_control_command_response_times_out() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (_stream, _) = listener.accept().expect("accept");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        });
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(50)),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            valid_control_command_json(),
+        ));
+        server.join().expect("server");
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("io error"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_control_command_http_header_terminator_is_missing() {
+        let response = runtime_api_handle_control_command_with_raw_response(
+            "HTTP/1.1 202 Accepted\r\nContent-Type: application/json\r\n",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("missing response header terminator"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_control_command_http_status_line_is_missing() {
+        let response = runtime_api_handle_control_command_with_raw_response(
+            "\r\n\r\n{\"command\":{\"status\":\"DriverAck\"}}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("missing status line"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_control_command_http_version_is_invalid() {
+        let response = runtime_api_handle_control_command_with_raw_response(
+            "HTTX/1.1 202 Accepted\r\nContent-Type: application/json\r\n\r\n{\"command\":{\"status\":\"DriverAck\"}}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("invalid http version"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_control_command_http_status_code_is_invalid() {
+        let response = runtime_api_handle_control_command_with_raw_response(
+            "HTTP/1.1 xyz OOPS\r\nContent-Type: application/json\r\n\r\n{\"command\":{\"status\":\"DriverAck\"}}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server forwarding failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("invalid status code"));
+    }
+
+    #[test]
     #[ignore = "requires local TCP listener"]
     fn runtime_api_returns_screen_projection_from_tag_snapshot() {
         let screen_path = std::env::temp_dir().join(format!(
@@ -1653,7 +1756,37 @@ mod tests {
         response
     }
 
-    fn runtime_api_handle_projection_with_raw_snapshot_response(raw_response: &str) -> RuntimeHttpResponse {
+    fn runtime_api_handle_control_command_with_raw_response(raw_response: &str) -> RuntimeHttpResponse {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let raw = raw_response.to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/control-commands", request.path);
+            assert!(request.body.contains(r#""command_id":"cmd-1""#));
+            stream.write_all(raw.as_bytes()).expect("write raw response");
+        });
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(200)),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/control-commands",
+            valid_control_command_json(),
+        ));
+        server.join().expect("server");
+        response
+    }
+
+    fn runtime_api_handle_projection_with_raw_snapshot_response(
+        raw_response: &str,
+    ) -> RuntimeHttpResponse {
         let screen_path = write_test_screen_definition("snapshot-raw-http-response");
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
         let addr = listener.local_addr().expect("addr");
