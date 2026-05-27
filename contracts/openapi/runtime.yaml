@@ -269,12 +269,20 @@ components:
         rendered:
           type: string
           nullable: true
+        true_value:
+          type: string
+          nullable: true
+        false_value:
+          type: string
+          nullable: true
       required:
         - property
         - binding_key
         - tag_id
         - source_value
         - rendered
+        - true_value
+        - false_value
     ScreenProjectionResponse:
       type: object
       properties:

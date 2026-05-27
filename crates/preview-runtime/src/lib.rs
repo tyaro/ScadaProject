@@ -140,6 +140,8 @@ pub struct ObjectModifierState {
     pub tag_id: String,
     pub source_value: Option<Value>,
     pub rendered: Option<String>,
+    pub true_value: Option<String>,
+    pub false_value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -675,6 +677,8 @@ pub fn project_snapshot_to_screen(
                 tag_id,
                 source_value,
                 rendered,
+                true_value: rule.true_value,
+                false_value: rule.false_value,
             });
         }
 
@@ -815,6 +819,21 @@ pub fn apply_delta_to_projection(
             binding.sequence = Some(delta.sequence);
             result.applied_bindings += 1;
             object_changed = true;
+        }
+
+        if object_changed {
+            for modifier in &mut object.modifiers {
+                if modifier.tag_id != delta.tag_id {
+                    continue;
+                }
+
+                modifier.source_value = Some(delta.value.clone());
+                modifier.rendered = Some(render_modify_rule_value(
+                    &delta.value,
+                    modifier.true_value.as_deref(),
+                    modifier.false_value.as_deref(),
+                ));
+            }
         }
 
         if object_changed {
@@ -2123,6 +2142,11 @@ mod tests {
         );
         assert_eq!(None, projection.object_states[0].bindings[0].value);
         assert_eq!(None, projection.object_states[0].modifiers[0].rendered);
+        assert_eq!(Some("#00ff00".to_string()), projection.object_states[0].modifiers[0].true_value);
+        assert_eq!(
+            Some("#999999".to_string()),
+            projection.object_states[0].modifiers[0].false_value
+        );
         assert_eq!(
             Some("21.0".to_string()),
             projection.object_states[0].modifiers[1].rendered
@@ -2167,6 +2191,16 @@ mod tests {
                 modifiers: Vec::new(),
             }],
         };
+
+        projection.object_states[0].modifiers = vec![ObjectModifierState {
+            property: "visible".to_string(),
+            binding_key: "state".to_string(),
+            tag_id: "mock.running.001".to_string(),
+            source_value: Some(Value::Bool(false)),
+            rendered: Some("false".to_string()),
+            true_value: Some("true".to_string()),
+            false_value: Some("false".to_string()),
+        }];
         let newer = RuntimeTagValue {
             tag_id: "mock.running.001".to_string(),
             value: Value::Bool(true),
@@ -2205,6 +2239,14 @@ mod tests {
         assert_eq!(
             Some(Value::Bool(true)),
             projection.object_states[0].bindings[0].value
+        );
+        assert_eq!(
+            Some(Value::Bool(true)),
+            projection.object_states[0].modifiers[0].source_value
+        );
+        assert_eq!(
+            Some("true".to_string()),
+            projection.object_states[0].modifiers[0].rendered
         );
         assert_eq!(1, stale_result.ignored_stale_bindings);
         assert_eq!(

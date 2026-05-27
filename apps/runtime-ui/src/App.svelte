@@ -23,6 +23,8 @@
     tag_id: string
     source_value: unknown
     rendered: string | null
+    true_value?: string | null
+    false_value?: string | null
   }
 
   type ScreenProjection = {
@@ -241,22 +243,42 @@
     if (topic !== expectedTopic || typeof delta.sequence !== 'number') return
 
     let applied = false
-    projection = {
-      ...projection,
-      object_states: projection.object_states.map((object) => ({
+    let nextObjectStates = projection.object_states.map((object) => ({
+      ...object,
+      bindings: object.bindings.map((binding) => {
+        if (binding.tag_id !== delta.tag_id) return binding
+        if (binding.sequence !== null && delta.sequence <= binding.sequence) return binding
+        applied = true
+        return {
+          ...binding,
+          value: delta.value,
+          quality: delta.quality,
+          sequence: delta.sequence,
+        }
+      }),
+    }))
+
+    if (applied) {
+      nextObjectStates = nextObjectStates.map((object) => ({
         ...object,
-        bindings: object.bindings.map((binding) => {
-          if (binding.tag_id !== delta.tag_id) return binding
-          if (binding.sequence !== null && delta.sequence <= binding.sequence) return binding
-          applied = true
+        modifiers: (object.modifiers ?? []).map((modifier) => {
+          if (modifier.tag_id !== delta.tag_id) return modifier
           return {
-            ...binding,
-            value: delta.value,
-            quality: delta.quality,
-            sequence: delta.sequence,
+            ...modifier,
+            source_value: delta.value,
+            rendered: renderModifierValue(
+              delta.value,
+              modifier.true_value ?? undefined,
+              modifier.false_value ?? undefined
+            ),
           }
         }),
-      })),
+      }))
+    }
+
+    projection = {
+      ...projection,
+      object_states: nextObjectStates,
     }
 
     if (applied) {
@@ -314,6 +336,21 @@
       return false
     }
     return undefined
+  }
+
+  function renderModifierValue(
+    sourceValue: unknown,
+    trueValue?: string,
+    falseValue?: string
+  ): string | null {
+    if (typeof sourceValue === 'boolean') {
+      if (sourceValue) return trueValue ?? 'true'
+      return falseValue ?? 'false'
+    }
+    if (typeof sourceValue === 'string') return sourceValue
+    if (sourceValue === null || sourceValue === undefined) return null
+    if (typeof sourceValue === 'number') return sourceValue.toString()
+    return JSON.stringify(sourceValue)
   }
 
   function formatValue(value: unknown): string {

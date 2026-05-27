@@ -57,6 +57,8 @@ const projectionWithModifiers = {
           tag_id: 'mock.running.001',
           source_value: true,
           rendered: 'true',
+          true_value: 'true',
+          false_value: 'false',
         },
         {
           property: 'color',
@@ -64,6 +66,8 @@ const projectionWithModifiers = {
           tag_id: 'mock.running.001',
           source_value: true,
           rendered: '#22aa44',
+          true_value: '#22aa44',
+          false_value: '#999999',
         },
       ],
     },
@@ -78,6 +82,8 @@ const projectionWithModifiers = {
           tag_id: 'mock.running.001',
           source_value: true,
           rendered: 'Pump Ready',
+          true_value: 'Pump Ready',
+          false_value: 'Pump Stopped',
         },
       ],
     },
@@ -199,6 +205,49 @@ test('applies modifier text, color, and visibility from projection', async ({ pa
   await page.getByRole('button', { name: 'Refresh projection' }).click()
 
   await expect(page.locator('.state-stack strong')).toHaveText('Pump Hidden')
+  await expect(page.locator('.pump-asset')).toHaveCount(0)
+})
+
+test('re-evaluates modifiers on mqtt delta without projection refresh', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionWithModifiers),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.state-stack strong')).toHaveText('Pump Ready')
+  await expect(page.locator('.pump-asset')).toHaveCount(1)
+
+  await page.evaluate(() => {
+    ;(
+      window as Window & {
+        __runtimeUiTestHook__?: {
+          applyDelta: (topic: string, payload: unknown) => void
+        }
+      }
+    ).__runtimeUiTestHook__?.applyDelta('scada/demo/tag/mock.running.001/value', {
+      tag_id: 'mock.running.001',
+      value: false,
+      quality: 'Simulated',
+      sequence: 7,
+    })
+  })
+
+  await expect(page.locator('.state-stack strong')).toHaveText('Pump Stopped')
   await expect(page.locator('.pump-asset')).toHaveCount(0)
 })
 
