@@ -22,13 +22,23 @@
           "property": "visible",
           "binding_key": "state",
           "true_value": "true",
-          "false_value": "false"
+          "false_value": "false",
+          "condition": {
+            "op": "eq",
+            "value": true
+          }
         },
         {
           "property": "color",
-          "binding_key": "state",
-          "true_value": "#3cb371",
-          "false_value": "#808080"
+          "binding_key": "value",
+          "true_value": "#cc3333",
+          "false_value": "#3cb371",
+          "condition": {
+            "any": [
+              { "op": "lt", "value": 18 },
+              { "op": "gt", "value": 28 }
+            ]
+          }
         }
       ]
     },
@@ -45,7 +55,15 @@
       "modify_rules": [
         {
           "property": "text",
-          "binding_key": "value"
+          "binding_key": "value",
+          "true_value": "NORMAL",
+          "false_value": "CHECK",
+          "condition": {
+            "all": [
+              { "op": "gte", "value": 20 },
+              { "op": "lte", "value": 26 }
+            ]
+          }
         }
       ]
     }

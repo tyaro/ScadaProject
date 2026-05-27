@@ -90,6 +90,63 @@ const projectionWithModifiers = {
   ],
 }
 
+const projectionWithConditionalModifiers = {
+  screen_id: 'mock-main',
+  project_id: 'demo',
+  object_states: [
+    {
+      object_id: 'pump-001',
+      svg_asset_id: 'pump-symbol',
+      bindings: [
+        {
+          key: 'value',
+          tag_id: 'mock.temperature.001',
+          value: 21.5,
+          quality: 'Simulated',
+          sequence: 6,
+        },
+      ],
+      modifiers: [
+        {
+          property: 'color',
+          binding_key: 'value',
+          tag_id: 'mock.temperature.001',
+          source_value: 21.5,
+          rendered: '#00aa44',
+          true_value: '#ff0000',
+          false_value: '#00aa44',
+          condition: {
+            op: 'gte',
+            value: 25,
+          },
+        },
+      ],
+    },
+    {
+      object_id: 'label-001',
+      svg_asset_id: 'label-symbol',
+      bindings: [],
+      modifiers: [
+        {
+          property: 'text',
+          binding_key: 'value',
+          tag_id: 'mock.temperature.001',
+          source_value: 21.5,
+          rendered: 'Normal',
+          true_value: 'Alarm',
+          false_value: 'Normal',
+          condition: {
+            any: [
+              { op: 'lt', value: 18 },
+              { op: 'gt', value: 28 },
+            ],
+          },
+        },
+      ],
+    },
+  ],
+}
+
 test('renders projection and posts control command', async ({ page }) => {
   let projectionCalls = 0
   let commandCalls = 0
@@ -249,6 +306,49 @@ test('re-evaluates modifiers on mqtt delta without projection refresh', async ({
 
   await expect(page.locator('.state-stack strong')).toHaveText('Pump Stopped')
   await expect(page.locator('.pump-asset')).toHaveCount(0)
+})
+
+test('re-evaluates condition-based modifiers on mqtt delta', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionWithConditionalModifiers),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.locator('.state-stack strong')).toHaveText('Normal')
+  await expect(page.locator('.pump-body')).toHaveCSS('background-color', 'rgb(0, 170, 68)')
+
+  await page.evaluate(() => {
+    ;(
+      window as Window & {
+        __runtimeUiTestHook__?: {
+          applyDelta: (topic: string, payload: unknown) => void
+        }
+      }
+    ).__runtimeUiTestHook__?.applyDelta('scada/demo/tag/mock.temperature.001/value', {
+      tag_id: 'mock.temperature.001',
+      value: 30,
+      quality: 'Simulated',
+      sequence: 7,
+    })
+  })
+
+  await expect(page.locator('.state-stack strong')).toHaveText('Alarm')
+  await expect(page.locator('.pump-body')).toHaveCSS('background-color', 'rgb(255, 0, 0)')
 })
 
 test('re-fetches projection after start command', async ({ page }) => {

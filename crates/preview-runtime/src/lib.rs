@@ -106,6 +106,26 @@ pub struct ScreenModifyRuleDefinition {
     pub true_value: Option<String>,
     #[serde(default)]
     pub false_value: Option<String>,
+    #[serde(default)]
+    pub condition: Option<ModifyRuleCondition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModifyRuleCondition {
+    #[serde(default)]
+    pub op: Option<String>,
+    #[serde(default)]
+    pub value: Option<Value>,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    #[serde(default)]
+    pub values: Option<Vec<Value>>,
+    #[serde(default)]
+    pub all: Vec<ModifyRuleCondition>,
+    #[serde(default)]
+    pub any: Vec<ModifyRuleCondition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -142,6 +162,8 @@ pub struct ObjectModifierState {
     pub rendered: Option<String>,
     pub true_value: Option<String>,
     pub false_value: Option<String>,
+    #[serde(default)]
+    pub condition: Option<ModifyRuleCondition>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -668,6 +690,7 @@ pub fn project_snapshot_to_screen(
                     value,
                     rule.true_value.as_deref(),
                     rule.false_value.as_deref(),
+                    rule.condition.as_ref(),
                 )
             });
 
@@ -679,6 +702,7 @@ pub fn project_snapshot_to_screen(
                 rendered,
                 true_value: rule.true_value,
                 false_value: rule.false_value,
+                condition: rule.condition,
             });
         }
 
@@ -701,7 +725,17 @@ fn render_modify_rule_value(
     source_value: &Value,
     true_value: Option<&str>,
     false_value: Option<&str>,
+    condition: Option<&ModifyRuleCondition>,
 ) -> String {
+    if let Some(condition) = condition {
+        let matched = evaluate_modify_rule_condition(source_value, condition);
+        return if matched {
+            true_value.unwrap_or("true").to_string()
+        } else {
+            false_value.unwrap_or("false").to_string()
+        };
+    }
+
     match source_value {
         Value::Bool(value) => {
             if *value {
@@ -712,6 +746,87 @@ fn render_modify_rule_value(
         }
         Value::String(value) => value.clone(),
         _ => source_value.to_string(),
+    }
+}
+
+fn evaluate_modify_rule_condition(source_value: &Value, condition: &ModifyRuleCondition) -> bool {
+    if !condition.all.is_empty()
+        && !condition
+            .all
+            .iter()
+            .all(|item| evaluate_modify_rule_condition(source_value, item))
+    {
+        return false;
+    }
+
+    if !condition.any.is_empty()
+        && !condition
+            .any
+            .iter()
+            .any(|item| evaluate_modify_rule_condition(source_value, item))
+    {
+        return false;
+    }
+
+    let Some(op) = condition.op.as_deref() else {
+        return true;
+    };
+
+    match op {
+        "eq" => condition
+            .value
+            .as_ref()
+            .map(|value| source_value == value)
+            .unwrap_or(false),
+        "ne" => condition
+            .value
+            .as_ref()
+            .map(|value| source_value != value)
+            .unwrap_or(false),
+        "gt" => compare_numeric(source_value, condition.value.as_ref(), |left, right| {
+            left > right
+        }),
+        "gte" => compare_numeric(source_value, condition.value.as_ref(), |left, right| {
+            left >= right
+        }),
+        "lt" => compare_numeric(source_value, condition.value.as_ref(), |left, right| {
+            left < right
+        }),
+        "lte" => compare_numeric(source_value, condition.value.as_ref(), |left, right| {
+            left <= right
+        }),
+        "between" => {
+            let left = as_f64(source_value);
+            match (left, condition.min, condition.max) {
+                (Some(value), Some(min), Some(max)) => value >= min && value <= max,
+                _ => false,
+            }
+        }
+        "in" => condition
+            .values
+            .as_ref()
+            .map(|values| values.iter().any(|candidate| candidate == source_value))
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+fn compare_numeric<F>(source_value: &Value, right: Option<&Value>, compare: F) -> bool
+where
+    F: Fn(f64, f64) -> bool,
+{
+    let left_number = as_f64(source_value);
+    let right_number = right.and_then(as_f64);
+    match (left_number, right_number) {
+        (Some(left), Some(right)) => compare(left, right),
+        _ => false,
+    }
+}
+
+fn as_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(number) => number.as_f64(),
+        _ => None,
     }
 }
 
@@ -832,6 +947,7 @@ pub fn apply_delta_to_projection(
                     &delta.value,
                     modifier.true_value.as_deref(),
                     modifier.false_value.as_deref(),
+                    modifier.condition.as_ref(),
                 ));
             }
         }
@@ -2101,12 +2217,14 @@ mod tests {
                         binding_key: "state".to_string(),
                         true_value: Some("#00ff00".to_string()),
                         false_value: Some("#999999".to_string()),
+                        condition: None,
                     },
                     ScreenModifyRuleDefinition {
                         property: "text".to_string(),
                         binding_key: "value".to_string(),
                         true_value: None,
                         false_value: None,
+                        condition: None,
                     },
                 ],
             }],
@@ -2200,6 +2318,7 @@ mod tests {
             rendered: Some("false".to_string()),
             true_value: Some("true".to_string()),
             false_value: Some("false".to_string()),
+            condition: None,
         }];
         let newer = RuntimeTagValue {
             tag_id: "mock.running.001".to_string(),
@@ -2260,6 +2379,93 @@ mod tests {
         assert_eq!(
             "scada/demo/tag/+/value",
             mqtt_tag_value_topic_filter("demo")
+        );
+    }
+
+    #[test]
+    fn projection_and_delta_apply_condition_based_modifier() {
+        let definition = ScreenDefinition {
+            schema_version: "1.0.0".to_string(),
+            screen_id: "main".to_string(),
+            project_id: "demo".to_string(),
+            name: "Main".to_string(),
+            canvas_width: 1280,
+            canvas_height: 720,
+            objects: vec![ScreenObjectDefinition {
+                object_id: "obj-1".to_string(),
+                svg_asset_id: "pump".to_string(),
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                tag_bindings: HashMap::from([(
+                    "value".to_string(),
+                    "mock.temperature.001".to_string(),
+                )]),
+                modify_rules: vec![ScreenModifyRuleDefinition {
+                    property: "color".to_string(),
+                    binding_key: "value".to_string(),
+                    true_value: Some("#ff0000".to_string()),
+                    false_value: Some("#00aa44".to_string()),
+                    condition: Some(ModifyRuleCondition {
+                        op: Some("gte".to_string()),
+                        value: Some(Value::from(25.0)),
+                        min: None,
+                        max: None,
+                        values: None,
+                        all: Vec::new(),
+                        any: Vec::new(),
+                    }),
+                }],
+            }],
+        };
+
+        let snapshot = TagSnapshot {
+            values: vec![RuntimeTagValue {
+                tag_id: "mock.temperature.001".to_string(),
+                value: Value::from(21.0),
+                data_type: "float".to_string(),
+                quality: "Simulated".to_string(),
+                source_timestamp: "1970-01-01T00:00:00Z".to_string(),
+                server_timestamp: "1970-01-01T00:00:00Z".to_string(),
+                sequence: 1,
+                scan_interval_ms: 1000,
+                stale_after_ms: 3000,
+                driver_id: "mock-driver".to_string(),
+                endpoint_id: "mock-endpoint".to_string(),
+                read_status: "ok".to_string(),
+                write_status: "idle".to_string(),
+            }],
+            missing_tag_ids: Vec::new(),
+        };
+
+        let mut projection = project_snapshot_to_screen(&definition, &snapshot);
+        assert_eq!(
+            Some("#00aa44".to_string()),
+            projection.object_states[0].modifiers[0].rendered
+        );
+
+        let delta = RuntimeTagValue {
+            tag_id: "mock.temperature.001".to_string(),
+            value: Value::from(28.0),
+            data_type: "float".to_string(),
+            quality: "Simulated".to_string(),
+            source_timestamp: "1970-01-01T00:00:01Z".to_string(),
+            server_timestamp: "1970-01-01T00:00:01Z".to_string(),
+            sequence: 2,
+            scan_interval_ms: 1000,
+            stale_after_ms: 3000,
+            driver_id: "mock-driver".to_string(),
+            endpoint_id: "mock-endpoint".to_string(),
+            read_status: "ok".to_string(),
+            write_status: "idle".to_string(),
+        };
+
+        let result = apply_delta_to_projection(&mut projection, &delta);
+        assert_eq!(1, result.applied_bindings);
+        assert_eq!(
+            Some("#ff0000".to_string()),
+            projection.object_states[0].modifiers[0].rendered
         );
     }
 }

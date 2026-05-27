@@ -25,6 +25,17 @@
     rendered: string | null
     true_value?: string | null
     false_value?: string | null
+    condition?: ModifyRuleCondition | null
+  }
+
+  type ModifyRuleCondition = {
+    op?: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'between' | 'in'
+    value?: unknown
+    min?: number
+    max?: number
+    values?: unknown[]
+    all?: ModifyRuleCondition[]
+    any?: ModifyRuleCondition[]
   }
 
   type ScreenProjection = {
@@ -269,7 +280,8 @@
             rendered: renderModifierValue(
               delta.value,
               modifier.true_value ?? undefined,
-              modifier.false_value ?? undefined
+                  modifier.false_value ?? undefined,
+                  modifier.condition ?? undefined
             ),
           }
         }),
@@ -341,8 +353,14 @@
   function renderModifierValue(
     sourceValue: unknown,
     trueValue?: string,
-    falseValue?: string
+    falseValue?: string,
+    condition?: ModifyRuleCondition
   ): string | null {
+    if (condition) {
+      const matched = evaluateModifierCondition(sourceValue, condition)
+      return matched ? (trueValue ?? 'true') : (falseValue ?? 'false')
+    }
+
     if (typeof sourceValue === 'boolean') {
       if (sourceValue) return trueValue ?? 'true'
       return falseValue ?? 'false'
@@ -351,6 +369,62 @@
     if (sourceValue === null || sourceValue === undefined) return null
     if (typeof sourceValue === 'number') return sourceValue.toString()
     return JSON.stringify(sourceValue)
+  }
+
+  function evaluateModifierCondition(sourceValue: unknown, condition: ModifyRuleCondition): boolean {
+    const allConditions = condition.all ?? []
+    if (allConditions.length > 0 && !allConditions.every((item) => evaluateModifierCondition(sourceValue, item))) {
+      return false
+    }
+
+    const anyConditions = condition.any ?? []
+    if (anyConditions.length > 0 && !anyConditions.some((item) => evaluateModifierCondition(sourceValue, item))) {
+      return false
+    }
+
+    if (!condition.op) {
+      return true
+    }
+
+    switch (condition.op) {
+      case 'eq':
+        return sourceValue === condition.value
+      case 'ne':
+        return sourceValue !== condition.value
+      case 'gt':
+        return compareNumber(sourceValue, condition.value, (left, right) => left > right)
+      case 'gte':
+        return compareNumber(sourceValue, condition.value, (left, right) => left >= right)
+      case 'lt':
+        return compareNumber(sourceValue, condition.value, (left, right) => left < right)
+      case 'lte':
+        return compareNumber(sourceValue, condition.value, (left, right) => left <= right)
+      case 'between': {
+        const sourceNumber = asNumber(sourceValue)
+        if (sourceNumber === null || condition.min === undefined || condition.max === undefined) return false
+        return sourceNumber >= condition.min && sourceNumber <= condition.max
+      }
+      case 'in':
+        return (condition.values ?? []).some((value) => value === sourceValue)
+      default:
+        return false
+    }
+  }
+
+  function compareNumber(
+    sourceValue: unknown,
+    rightValue: unknown,
+    compare: (left: number, right: number) => boolean
+  ): boolean {
+    const left = asNumber(sourceValue)
+    const right = asNumber(rightValue)
+    if (left === null || right === null) return false
+    return compare(left, right)
+  }
+
+  function asNumber(value: unknown): number | null {
+    if (typeof value !== 'number' || Number.isNaN(value)) return null
+    return value
   }
 
   function formatValue(value: unknown): string {

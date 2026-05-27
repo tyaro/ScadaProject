@@ -36,7 +36,8 @@
                 "property": { "type": "string", "minLength": 1 },
                 "binding_key": { "type": "string", "minLength": 1 },
                 "true_value": { "type": "string" },
-                "false_value": { "type": "string" }
+                "false_value": { "type": "string" },
+                "condition": { "$ref": "#/$defs/ModifyRuleCondition" }
               },
               "required": ["property", "binding_key"]
             }
@@ -44,6 +45,38 @@
         },
         "required": ["object_id", "svg_asset_id", "x", "y", "width", "height"]
       }
+    }
+  },
+  "$defs": {
+    "ModifyRuleCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": ["eq", "ne", "gt", "gte", "lt", "lte", "between", "in"]
+        },
+        "value": {},
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "values": {
+          "type": "array",
+          "items": {}
+        },
+        "all": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModifyRuleCondition" }
+        },
+        "any": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModifyRuleCondition" }
+        }
+      },
+      "anyOf": [
+        { "required": ["op"] },
+        { "required": ["all"] },
+        { "required": ["any"] }
+      ]
     }
   },
   "required": ["schema_version", "screen_id", "project_id", "name", "canvas_width", "canvas_height", "objects"]

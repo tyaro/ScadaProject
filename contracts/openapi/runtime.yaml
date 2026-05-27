@@ -275,6 +275,10 @@ components:
         false_value:
           type: string
           nullable: true
+        condition:
+          allOf:
+            - $ref: "#/components/schemas/ModifyRuleCondition"
+          nullable: true
       required:
         - property
         - binding_key
@@ -283,6 +287,37 @@ components:
         - rendered
         - true_value
         - false_value
+        - condition
+    ModifyRuleCondition:
+      type: object
+      properties:
+        op:
+          type: string
+          enum:
+            - eq
+            - ne
+            - gt
+            - gte
+            - lt
+            - lte
+            - between
+            - in
+        value: {}
+        min:
+          type: number
+        max:
+          type: number
+        values:
+          type: array
+          items: {}
+        all:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModifyRuleCondition"
+        any:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModifyRuleCondition"
     ScreenProjectionResponse:
       type: object
       properties:
