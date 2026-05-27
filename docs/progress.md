@@ -140,6 +140,11 @@
 - Runtime API境界テストを強化
   - `projection` と `control-command` を同一Runtime APIインスタンスで連続処理するテストを追加
   - モックTag Server TCPサーバで `POST /api/v1/tags/snapshot` と `POST /api/v1/control-commands` の転送を検証
+- Svelte監視画面のブラウザ自動検証を追加
+  - `@playwright/test` を導入
+  - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
+  - `e2e/runtime-ui.spec.ts` で projection表示とStart操作のControlCommand POSTを検証
+  - APIはPlaywright routeでモックし、UI回帰をバックエンド依存なしで実行可能にした
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -220,8 +225,8 @@
 
 ## 次に行うこと
 
-1. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
-2. Svelte監視画面の操作確認をブラウザ自動検証へ寄せ、Start/Stop後の表示更新を回帰確認できるようにする。
+1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
+2. PlaywrightテストにMQTT delta受信後の表示更新シナリオを追加する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
 ## フェーズ0完了条件棚卸し
@@ -346,6 +351,8 @@
 - `cd apps/runtime-ui && npm run build`: 成功
 - `cargo test -p preview-runtime -p driver-manager -p tag-server`（Runtime API境界テスト追加後）: 成功
   - `runtime_api_handles_projection_and_control_command_with_same_client` を追加し、同一Runtime APIでの連続処理を確認
+- `cd apps/runtime-ui && npm run test:e2e`: 成功
+  - `e2e/runtime-ui.spec.ts` で projection描画と `Start` 操作後の `command DriverAck` 表示を確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
