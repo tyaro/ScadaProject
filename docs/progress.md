@@ -189,6 +189,12 @@
   - `push` / `pull_request` では標準チェックを実行
   - `workflow_dispatch` の `run_bind_tests=true` でPlaywright E2Eとbind依存チェックを実行
   - bind依存チェック失敗時は `/tmp` ログとPlaywright結果をartifact保存
+- GitHub公開リポジトリ作成と初回CI確認
+  - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push` で公開リポジトリを作成
+  - 初回CI失敗原因を特定（`rust-toolchain.toml` の `stable-aarch64-apple-darwin` 指定）
+  - `rust-toolchain.toml` を `channel = "stable"` へ修正
+  - 2回目CI失敗原因を特定（`scripts/check_local_ci.sh` の `nvm use 24` がCI環境で失敗）
+  - `scripts/check_local_ci.sh` を修正し、`nvm` 非依存でNode 24を検証する形へ改善
 - Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
   - `--include-rumqttd` で起動計画に `rumqttd` を追加
   - `--rumqttd-config` / `--rumqttd-bin` で設定ファイルと実行ファイルを指定可能
@@ -266,7 +272,7 @@
 
 ## 次に行うこと
 
-1. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
+1. GitHub ActionsのNode 20 deprecation警告（`actions/checkout@v4`）への追従方針を決める（Node 24対応版への更新または環境変数運用）。
 
 ## フェーズ0完了条件棚卸し
 
@@ -294,6 +300,11 @@
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
 - `nvm use 24 && node --version`: `v24.16.0`
+- `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
+- `GH_PAGER=cat gh run view 26506251734 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`rust-toolchain.toml` の channel が `stable-aarch64-apple-darwin`）
+- `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功
+- `GH_PAGER=cat gh run view 26506631713 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`scripts/check_local_ci.sh` の `nvm use 24`）
+- `scripts/check_local_ci.sh`: 成功（Node 24チェック追加後）
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）

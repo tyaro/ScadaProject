@@ -9,7 +9,20 @@ if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
   # CI images can skip this and provide Node directly on PATH.
   # shellcheck disable=SC1091
   source "${HOME}/.nvm/nvm.sh"
-  nvm use 24 >/dev/null
+  if ! nvm use 24 >/dev/null 2>&1; then
+    echo "warn: nvm could not activate Node 24; falling back to PATH node"
+  fi
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "error: node is required but not found on PATH"
+  exit 1
+fi
+
+NODE_MAJOR="$(node -v | sed -E 's/^v([0-9]+).*/\1/')"
+if [[ "$NODE_MAJOR" != "24" ]]; then
+  echo "error: Node.js 24 is required (current: $(node -v))"
+  exit 1
 fi
 
 echo "== cargo fmt --check =="
