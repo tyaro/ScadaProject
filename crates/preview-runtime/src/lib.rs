@@ -1339,6 +1339,50 @@ mod tests {
     }
 
     #[test]
+    fn runtime_api_returns_bad_gateway_when_snapshot_fetch_fails() {
+        let screen_path = std::env::temp_dir().join(format!(
+            "scada-preview-runtime-screen-snapshot-fail-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &screen_path,
+            r#"{"schema_version":"1.0.0","screen_id":"main","project_id":"demo","name":"Main","canvas_width":1280,"canvas_height":720,"objects":[{"object_id":"pump-001","svg_asset_id":"pump","x":0.0,"y":0.0,"width":100.0,"height":100.0,"tag_bindings":{"state":"mock.running.001"}}]}"#,
+        )
+        .expect("write screen");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/tags/snapshot", request.path);
+
+            let response = RuntimeHttpResponse::json(
+                503,
+                r#"{"error":"snapshot unavailable"}"#.to_string(),
+            );
+            stream.write_all(&response.to_http_bytes()).expect("write");
+        });
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}")).expect("client"),
+        )
+        .with_default_screen_path(screen_path.clone());
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{}"#,
+        ));
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("503"));
+    }
+
+    #[test]
     fn summary_formats_values_and_missing_tags() {
         let snapshot = TagSnapshot {
             values: vec![RuntimeTagValue {

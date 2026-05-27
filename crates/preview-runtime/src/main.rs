@@ -334,3 +334,19 @@ fn mqtt_config_from_args(args: &[String], client_prefix: &str) -> MqttConnection
         timeout: Duration::from_secs(timeout_secs),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnect_backoff_secs_increases_and_caps_at_30() {
+        assert_eq!(1, reconnect_backoff_secs(1));
+        assert_eq!(2, reconnect_backoff_secs(2));
+        assert_eq!(4, reconnect_backoff_secs(3));
+        assert_eq!(8, reconnect_backoff_secs(4));
+        assert_eq!(16, reconnect_backoff_secs(5));
+        assert_eq!(30, reconnect_backoff_secs(6));
+        assert_eq!(30, reconnect_backoff_secs(10));
+    }
+}
