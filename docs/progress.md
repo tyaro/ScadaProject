@@ -165,6 +165,7 @@ Runtime API境界テストを強化
   - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
   - Tag Serverの `snapshot` / `driver-values` でも `400/401/404` のJSON error本文互換性テストを追加
   - OpenAPIの `snapshot` / `driver-values` にも `ErrorResponse` を適用し、`driver-values` の `502` を `DriverValuesPublishFailureResponse` として明示
+  - Tag Serverの `driver-values` でMQTT publish失敗を再現し、`502` かつ `publish_errors` 配列を返す契約テストを追加
   - `control-command` / `projection` の主要エラー応答（`400/401/404/502`）で `application/json` + `{"error":"..."}` 形式を共通アサートで固定化
   - Runtime APIの未知ルート（`404`）とprojection認証エラー（`401`）について、JSON error本文互換性テストを追加
   - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
@@ -370,6 +371,7 @@ Runtime API境界テストを強化
 - `cargo test -p preview-runtime -- --ignored`: 成功（20 tests、境界系bind依存テストの回帰なし）
 - `cargo test -p tag-server`: 成功（12 tests + integration 2 tests、`snapshot` / `driver-values` / unknown route のJSON error本文互換性テスト追加を含む）
 - `cargo test -p preview-runtime`: 成功（37 tests、Tag Server側契約強化後の回帰なし）
+- `cargo test -p tag-server`: 成功（13 tests + integration 2 tests、`driver-values` の `502 + publish_errors` 契約テスト追加を含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p preview-runtime`: 成功（Tag Server snapshot不正JSON/空応答の通常テスト確認、bind依存テストはignored）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server snapshot不正JSON/空応答のbind依存境界テストを含む6件）

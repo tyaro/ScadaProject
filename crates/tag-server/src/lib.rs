@@ -1089,6 +1089,43 @@ mod tests {
     }
 
     #[test]
+    fn driver_values_endpoint_returns_publish_errors_when_mqtt_publish_fails() {
+        let reserved_port = {
+            let listener = TcpListener::bind("127.0.0.1:0").expect("reserve port");
+            let port = listener.local_addr().expect("addr").port();
+            drop(listener);
+            port
+        };
+
+        let mut api = TagServerApi::phase0_mock().with_mqtt_publish(Some(MqttPublishConfig {
+            endpoint: MqttBrokerEndpoint::parse(&format!("mqtt://127.0.0.1:{reserved_port}"))
+                .expect("endpoint"),
+            client_id: "tag-server-test-publish-fail".to_string(),
+            timeout: Duration::from_millis(50),
+        }));
+        let request = HttpRequest::new(
+            "POST",
+            "/api/v1/driver-values",
+            r#"{"project_id":"demo","values":[{"tag_id":"mock.temperature.001","value":29.0,"data_type":"float","quality":"Simulated","source_timestamp":"1970-01-01T00:00:02Z","server_timestamp":"1970-01-01T00:00:02Z","sequence":2,"scan_interval_ms":1000,"stale_after_ms":3000,"driver_id":"mock-driver","endpoint_id":"mock-endpoint","read_status":"ok","write_status":"idle"}]}"#,
+        );
+
+        let response = api.handle(&request);
+
+        assert_eq!(502, response.status_code);
+        assert_eq!("application/json", response.content_type);
+        let body = serde_json::from_str::<serde_json::Value>(&response.body).expect("json");
+        assert_eq!(Some(1), body.get("received").and_then(serde_json::Value::as_u64));
+        assert_eq!(Some(1), body.get("ingested").and_then(serde_json::Value::as_u64));
+        assert_eq!(Some(0), body.get("stale").and_then(serde_json::Value::as_u64));
+        assert_eq!(Some(0), body.get("published").and_then(serde_json::Value::as_u64));
+        let publish_errors = body
+            .get("publish_errors")
+            .and_then(serde_json::Value::as_array)
+            .expect("publish_errors array");
+        assert!(!publish_errors.is_empty());
+    }
+
+    #[test]
     fn api_requires_token_when_configured() {
         let mut api = TagServerApi::phase0_mock().with_required_token(Some("secret".to_string()));
         let unauthenticated = HttpRequest::new(
