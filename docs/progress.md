@@ -1,6 +1,6 @@
 # 開発進行状況
 
-> 運用ルール: 進捗の正本はこの `docs/progress.md` とし、`docs/handoff.md` は再開手順のみを扱う。
+> 運用ルール: 進捗の正本はこの `docs/progress.md` とし、`docs/handoff.md` は再開手順のみを扱う。`docs/development_plan.md` の「3.0 進行状況サマリ」は要約ビューとして同期更新する。
 
 ## 現在のフェーズ
 
