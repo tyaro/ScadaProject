@@ -261,6 +261,40 @@ test('shows error when control command fails', async ({ page }) => {
   expect(projectionCalls).toBe(1)
 })
 
+test('shows error when projection fetch fails', async ({ page }) => {
+  let projectionCalls = 0
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        error: 'tag server snapshot failed',
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
+  await expect(page.getByText('projection 502')).toBeVisible()
+  await expect(page.getByText('Offline')).toBeVisible()
+  await expect(page.getByText('mock-main')).toHaveCount(0)
+  expect(projectionCalls).toBe(1)
+})
+
 test('updates displayed values after manual refresh', async ({ page }) => {
   let projectionCalls = 0
   const firstSnapshot = {
