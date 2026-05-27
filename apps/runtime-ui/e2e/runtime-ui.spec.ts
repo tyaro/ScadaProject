@@ -146,3 +146,82 @@ test('re-fetches projection after start command', async ({ page }) => {
   expect(startIssued).toBe(true)
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
+
+test('re-fetches projection after stop command', async ({ page }) => {
+  let projectionCalls = 0
+  let stopIssued = false
+  const snapshotRunning = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: true, sequence: 12 }
+            : binding
+        ),
+      },
+    ],
+  }
+  const snapshotStopped = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: false, sequence: 13 }
+            : binding
+        ),
+      },
+    ],
+  }
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    const body = stopIssued ? snapshotStopped : snapshotRunning
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    const request = route.request().postDataJSON() as {
+      requested_value: boolean
+      tag_id: string
+    }
+    expect(request.tag_id).toBe('mock.running.001')
+    expect(request.requested_value).toBe(false)
+    stopIssued = true
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  const commandResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/control-commands') &&
+      response.request().method() === 'POST'
+  )
+  const refreshResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes('/api/v1/screens/projection') &&
+      response.request().method() === 'POST'
+  )
+  await page.getByRole('button', { name: 'Stop' }).click()
+  await commandResponse
+  await refreshResponse
+
+  await expect(page.getByText('command DriverAck')).toBeVisible()
+  expect(stopIssued).toBe(true)
+  expect(projectionCalls).toBeGreaterThanOrEqual(2)
+})

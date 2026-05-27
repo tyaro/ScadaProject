@@ -146,6 +146,7 @@
   - `e2e/runtime-ui.spec.ts` で projection表示とStart操作のControlCommand POSTを検証
   - APIはPlaywright routeでモックし、UI回帰をバックエンド依存なしで実行可能にした
   - Start操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
+  - Stop操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -356,6 +357,9 @@
   - `e2e/runtime-ui.spec.ts` で projection描画と `Start` 操作後の `command DriverAck` 表示を確認
 - `cd apps/runtime-ui && npm run test:e2e`（Start後projection再取得シナリオ追加後）: 成功
   - `re-fetches projection after start command` で `POST /api/v1/control-commands` 後の `POST /api/v1/screens/projection` 再取得を確認
+- `cd apps/runtime-ui && npm run test:e2e`（Stop後projection再取得シナリオ追加後）: 成功
+  - `re-fetches projection after stop command` で `requested_value=false` のControlCommand送信とprojection再取得を確認
+  - E2E合計 `3 passed`
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
