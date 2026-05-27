@@ -232,6 +232,9 @@ Runtime API境界テストを強化
   - Builder APIに `--map-error-json` を追加し、`code/path/detail/user_message/known_code` をJSONで返す構造化出力を実装した
   - 基本設計書にBuilder APIの構造化マッピング出力仕様（`code/path/detail/user_message/known_code`）を追記し、未知コード時の表示方針を明文化した
   - Builder APIに `POST /api/v1/errors/map` を追加し、Builder UIがHTTP経由で同じ構造化エラーマッピングを利用できるようにした
+  - `apps/builder-ui` にSvelteベースの最小Builder UIを追加し、`POST /api/v1/errors/map` を呼び出して `known_code` / `user_message` / `path` を表示できるようにした
+  - `apps/builder-ui` の Playwright 回帰テストで、既知コード時の定型表示と未知コード時のフォールバック表示を固定化した
+  - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
@@ -338,8 +341,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. SVG modify rules の評価条件（比較演算、範囲条件、複数条件）の仕様を明文化し、現在の最小実装（bool/値直列化）から拡張するテスト観点を定義する。
-2. Builder UI本体着手時に、`POST /api/v1/errors/map` を利用する最小エラー表示コンポーネントを追加する。
+1. Builder UI の次段階として、`path` を機械解釈して該当 object/property 編集フィールドへフォーカスを戻す最小導線を追加する。
+2. Builder API のHTTP契約を OpenAPI として独立定義し、Builder UI との通信面を Runtime API と同様に契約管理できるようにする。
 
 ## フェーズ0完了条件棚卸し
 
@@ -367,6 +370,8 @@ Runtime API境界テストを強化
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
 - `nvm use 24 && node --version`: `v24.16.0`
+- `cd apps/builder-ui && npm run check`: 成功
+- `cd apps/builder-ui && npm run test:e2e`: 成功（2 passed）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
 - `GH_PAGER=cat gh run view 26506251734 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`rust-toolchain.toml` の channel が `stable-aarch64-apple-darwin`）
 - `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功

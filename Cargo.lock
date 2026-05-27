@@ -82,6 +82,7 @@ name = "builder-api"
 version = "0.1.0"
 dependencies = [
  "scada-core",
+ "serde",
  "serde_json",
 ]
 

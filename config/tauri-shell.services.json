@@ -4,7 +4,15 @@
   "services": [
     {
       "service": "builder-api",
-      "restart_on_exit": false
+      "args": [
+        "--serve",
+        "--addr",
+        "127.0.0.1:18110"
+      ],
+      "restart_on_exit": true,
+      "restart_max_attempts": 0,
+      "restart_backoff_ms": 500,
+      "restart_reset_after_ms": 30000
     },
     {
       "service": "tag-server",

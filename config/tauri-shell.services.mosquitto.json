@@ -4,6 +4,77 @@
   "services": [
     {
       "service": "builder-api",
+      "args": [
+        "--serve",
+        "--addr",
+        "127.0.0.1:18110"
+      ],
+      "restart_on_exit": true,
+      "restart_max_attempts": 0,
+      "restart_backoff_ms": 500,
+      "restart_reset_after_ms": 30000
+    },
+    {
+      "service": "tag-server",
+      "args": [
+        "--serve",
+        "--mqtt-url",
+        "mqtt://127.0.0.1:1883",
+        "--driver-manager",
+        "http://127.0.0.1:18081"
+      ],
+      "restart_on_exit": true,
+      "restart_max_attempts": 0,
+      "restart_backoff_ms": 500,
+      "restart_reset_after_ms": 30000
+    },
+    {
+      "service": "driver-manager",
+      "args": [
+        "--run-mock-loop",
+        "--mock-driver-bin",
+        "target/debug/mock-driver",
+        "--tag-server",
+        "http://127.0.0.1:18080",
+        "--write-addr",
+        "127.0.0.1:18081",
+        "--project-id",
+        "demo",
+        "--startup-delay-ms",
+        "1000",
+        "--interval-ms",
+        "1000"
+      ],
+      "restart_on_exit": true,
+      "restart_max_attempts": 0,
+      "restart_backoff_ms": 500,
+      "restart_reset_after_ms": 30000
+    },
+    {
+      "service": "mock-driver",
+      "restart_on_exit": false
+    },
+    {
+      "service": "preview-runtime",
+      "args": [
+        "--serve",
+        "--addr",
+        "127.0.0.1:18090",
+        "--tag-server",
+        "http://127.0.0.1:18080"
+      ],
+      "restart_on_exit": true,
+      "restart_max_attempts": 0,
+      "restart_backoff_ms": 500,
+      "restart_reset_after_ms": 30000
+    }
+  ]
+}{
+  "schema_version": "1.0.0",
+  "mqtt_url": "mqtt://127.0.0.1:1883",
+  "services": [
+    {
+      "service": "builder-api",
       "restart_on_exit": false
     },
     {

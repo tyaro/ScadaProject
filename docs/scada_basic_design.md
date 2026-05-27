@@ -474,6 +474,16 @@ Builder UI着手前の共通インターフェースとして、Builder APIは `
 
 Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_code=false` のときは `user_message` をそのまま表示する。
 
+初期実装では、`apps/builder-ui` にこの契約を確認するための最小画面を置く。Builder UI は Vite dev server の `/api` proxy を通して Builder API `127.0.0.1:18110` へ接続し、少なくとも次の表示を持つ。
+
+- 生エラー文字列の入力欄
+- `POST /api/v1/errors/map` 実行ボタン
+- `user_message`
+- `known_code`
+- `path`
+
+この最小画面は、Builder本体のタグ/画面エディタ着手前に、エラー契約と表示フォールバックを固定するための検証面とする。
+
 #### Builder API エラーマッピングHTTPエンドポイント
 
 Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。
@@ -484,6 +494,8 @@ Builder UI から直接利用できる最小連携点として、Builder API は
 - 不正JSONは `400` で `{"error":"invalid error map JSON: ..."}` を返す
 
 このエンドポイントは Builder UI 実装初期のエラー表示統一に使い、将来UI内へ同等ロジックを内包しても契約は維持する。
+
+ローカル同梱サービスでは、Builder API を `--serve --addr 127.0.0.1:18110` で常駐起動し、Builder UI から直接このエンドポイントを利用できるようにする。
 
 ### OpenAPI共通コンポーネント運用ルール
 
