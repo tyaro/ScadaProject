@@ -258,6 +258,7 @@ Runtime API境界テストを強化
   - `contracts/openapi/builder.yaml` と `scripts/check_local_ci.sh` の Builder OpenAPI 必須パス検証に `/api/v1/screens/save-as` を追加した
   - Builder UI から Preview Runtime の `POST /api/v1/screens/projection` を呼び出す最小プレビュー導線を追加し、保存候補パスを即座に Runtime 側で投影確認できるようにした
   - `apps/builder-ui` の E2E に Runtime preview ブリッジ検証を追加し、Builder API だけでなく Builder-Runtime 横断の回帰も固定化した
+  - Builder-Runtime 横断で使う Tauri ファイル選択I/F（`relative_path` 正規化を Tauri Shell が担当し、Save As と Runtime preview の双方で同一値を利用する方針）を `docs/scada_basic_design.md` に明記した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -367,7 +368,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `POST /api/v1/screens/save-as` と Runtime preview 呼び出し先を将来の Tauri ファイル選択結果へ接続し、相対パス入力をダイアログ選択へ置き換える。
+1. `docs/scada_basic_design.md` の横断I/F定義に沿って、Tauri command 実装（ダイアログ選択、`relative_path` 正規化、キャンセル応答）と Builder UI 接続を追加する。
 2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
 
 ## フェーズ0完了条件棚卸し

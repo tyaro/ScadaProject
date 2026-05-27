@@ -246,6 +246,36 @@ Tauri v2はデスクトップシェル、ウィンドウ管理、ローカルプ
 - Tauri側Rustは厚くし過ぎず、ローカルサービスの起動、停止、監視、ファイル選択、OS連携に限定する。
 - Rustで実装するサービスはcrateを分割し、変更頻度が高いUI編集ロジックとビルド境界を分ける。
 
+### Builder-Runtime横断ファイル選択I/F
+
+Builder UI の Save As と Runtime preview で保存先の解釈がずれないよう、ファイル選択結果は Tauri Shell で正規化して同一値を返す。
+
+| 項目 | 方針 |
+| --- | --- |
+| I/F境界 | Svelte Builder UI は Tauri command を呼び、ファイルダイアログを直接扱わない |
+| 返却値 | `config/screens/*.screen.json` 形式の `relative_path` を返す |
+| 正規化責務 | 絶対パスから project root 相対パスへの変換、`..` 拒否、拡張子チェックを Tauri Shell 側で行う |
+| 共通利用 | 返却された `relative_path` は Builder API `POST /api/v1/screens/save-as` と Preview Runtime `POST /api/v1/screens/projection` の `screen_path` に同一値で渡す |
+| キャンセル時 | `cancelled=true` とし、Builder UI は現在の入力値を変更しない |
+
+最小レスポンス形（案）:
+
+```json
+{
+    "cancelled": false,
+    "relative_path": "config/screens/mock-main.screen.json"
+}
+```
+
+```json
+{
+    "cancelled": true,
+    "relative_path": null
+}
+```
+
+このI/Fにより、Builder保存先とRuntime投影先が常に一致し、Builder-Runtime横断時の経路差分を減らす。
+
 ### 注意点
 
 別プロセス化は開発しやすさと責務分離に有効だが、初期から細かく分け過ぎるとプロセス管理、ポート管理、ログ収集、障害調査が難しくなる。初期はTauri Shell、Builder API、Preview Runtime、Tag Server、Driver Manager、Mock Driver程度の粒度に留める。
