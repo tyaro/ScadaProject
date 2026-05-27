@@ -48,9 +48,12 @@
     applyDelta: (topic: string, payload: RuntimeTagValue) => void
   }
 
+  type ErrorSource = 'Projection' | 'Command' | 'MQTT'
+
   let projection: ScreenProjection | null = null
   let loading = true
   let errorMessage = ''
+  let errorSource: ErrorSource | null = null
   let commandMessage = ''
   let lastUpdated = ''
   let mqttState = 'disconnected'
@@ -82,7 +85,7 @@
 
   async function loadProjection() {
     loading = true
-    errorMessage = ''
+    clearError()
 
     try {
       const response = await fetch('/api/v1/screens/projection', {
@@ -99,7 +102,7 @@
       lastUpdated = new Date().toLocaleTimeString()
       connectMqtt(projection.project_id)
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'projection unavailable'
+      setError('Projection', error instanceof Error ? error.message : 'projection unavailable')
     } finally {
       loading = false
     }
@@ -107,7 +110,7 @@
 
   async function writeRunning(value: boolean) {
     commandMessage = ''
-    errorMessage = ''
+    clearError()
 
     const commandId = `ui-${Date.now()}`
     try {
@@ -133,7 +136,7 @@
       commandMessage = `command ${body.command?.status ?? 'accepted'}`
       await loadProjection()
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'command failed'
+      setError('Command', error instanceof Error ? error.message : 'command failed')
     }
   }
 
@@ -202,6 +205,7 @@
     } catch (error) {
       mqttState = 'error'
       mqttMessage = error instanceof Error ? error.message : 'invalid mqtt payload'
+      setError('MQTT', mqttMessage)
       return
     }
 
@@ -262,6 +266,16 @@
     if (typeof value === 'string') return value
     return JSON.stringify(value)
   }
+
+  function setError(source: ErrorSource, message: string) {
+    errorSource = source
+    errorMessage = message
+  }
+
+  function clearError() {
+    errorSource = null
+    errorMessage = ''
+  }
 </script>
 
 <main class="runtime-shell">
@@ -284,7 +298,10 @@
   </header>
 
   {#if errorMessage}
-    <section class="notice" role="alert">{errorMessage}</section>
+    <section class="notice" role="alert">
+      <strong>{errorSource ?? 'Runtime'}</strong>
+      <span>{errorMessage}</span>
+    </section>
   {/if}
 
   <section class="summary-grid" aria-label="Runtime summary">

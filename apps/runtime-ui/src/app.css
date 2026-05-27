@@ -117,12 +117,26 @@ h2 {
 }
 
 .notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   margin-top: 16px;
   border-left: 4px solid var(--bad);
   background: #fff5f6;
   padding: 10px 12px;
   color: #741b28;
   font-size: 14px;
+}
+
+.notice strong {
+  flex: 0 0 auto;
+  min-width: 78px;
+  color: var(--bad);
+}
+
+.notice span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .summary-grid {

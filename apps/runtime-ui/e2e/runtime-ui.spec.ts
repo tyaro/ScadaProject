@@ -254,6 +254,7 @@ test('shows error when control command fails', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByRole('alert')).toContainText('Command')
   await expect(page.getByText('driver manager unavailable')).toBeVisible()
 
   expect(commandCalls).toBeGreaterThanOrEqual(1)
@@ -282,6 +283,7 @@ test('falls back to status when control command error body is not json', async (
   await expect(page.getByText('Stopped')).toBeVisible()
 
   await page.getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByRole('alert')).toContainText('Command')
   await expect(page.getByText('command 502')).toBeVisible()
 })
 
@@ -313,6 +315,7 @@ test('shows error when projection fetch fails', async ({ page }) => {
   await page.goto('/')
 
   await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('Projection')
   await expect(page.getByText('tag server snapshot failed')).toBeVisible()
   await expect(page.getByText('Offline')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start' })).toBeDisabled()
@@ -343,6 +346,7 @@ test('falls back to status when projection error body is not json', async ({ pag
 
   await page.goto('/')
 
+  await expect(page.getByRole('alert')).toContainText('Projection')
   await expect(page.getByText('projection 503')).toBeVisible()
   await expect(page.getByText('Offline')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start' })).toBeDisabled()
@@ -384,6 +388,7 @@ test('recovers from projection fetch failure after manual refresh', async ({ pag
   })
 
   await page.goto('/')
+  await expect(page.getByRole('alert')).toContainText('Projection')
   await expect(page.getByText('tag server snapshot failed')).toBeVisible()
 
   const refreshResponse = page.waitForResponse(
@@ -447,6 +452,7 @@ test('keeps last projection visible when manual refresh fails', async ({ page })
   await page.getByRole('button', { name: 'Refresh projection' }).click()
   await refreshResponse
 
+  await expect(page.getByRole('alert')).toContainText('Projection')
   await expect(page.getByRole('alert')).toContainText('tag server snapshot failed')
   await expect(page.getByText('mock-main')).toBeVisible()
   await expect(page.getByText(/21\.5/)).toBeVisible()
