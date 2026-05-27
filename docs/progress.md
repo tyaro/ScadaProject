@@ -153,6 +153,7 @@
   - Stop操作後にControlCommand応答とprojection再取得が発生することを回帰テストへ追加
   - ControlCommand失敗時にエラー表示へ遷移することを回帰テストへ追加
   - ControlCommand失敗時に非JSONエラー本文でも `command <status>` へフォールバックするよう改善
+  - ControlCommand成功時に空本文/非JSON本文でも `command accepted` へフォールバックし、projection再取得へ進むよう改善
   - projection取得失敗時にエラー表示とOffline表示へ遷移することを回帰テストへ追加
   - projection取得失敗時にRuntime APIのJSON `error` 本文を表示するよう改善
   - projection取得失敗時に非JSONエラー本文でも `projection <status>` へフォールバックすることを回帰テストへ追加
@@ -161,6 +162,7 @@
   - projection再取得失敗時も最後に成功した投影表示を保持することを回帰テストへ追加
   - エラー通知領域に `role="alert"` を付与し、失敗状態を支援技術にも通知できるよう改善
   - エラー通知に `Projection` / `Command` / `MQTT` の種別ラベルを追加し、失敗経路を判別しやすくした
+  - `projection` 更新後に上部の温度/稼働状態表示も確実に再計算されるよう、Svelteリアクティブ依存を明示化
   - 手動リフレッシュ操作後にprojection再取得で表示値が更新されることを回帰テストへ追加
   - MQTT delta受信相当イベント後に表示値とdelta状態が更新されることを回帰テストへ追加
   - 古いsequenceのMQTT deltaを破棄し、表示値を更新しないことを回帰テストへ追加
@@ -261,7 +263,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
-3. Runtime UIでControlCommand成功応答が空/不正JSONだった場合の表示フォールバックを追加する。
+3. Runtime UIの温度/稼働状態表示とbinding tableの一貫性を追加シナリオで確認する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -301,6 +303,8 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 12 passed（projection未取得時の操作無効化、再取得失敗時の既存表示保持を含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（Runtime UIエラー種別ラベル追加後）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 12 passed（Projection/Commandエラー種別ラベル検証を含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（ControlCommand成功応答フォールバック + 表示再計算修正後）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（ControlCommand成功時の空/非JSON応答フォールバックを含む）
 - `scripts/check_local_ci.sh`: 成功（標準チェック、bind依存チェックはskip）
 - `cargo test -p preview-runtime -- --ignored`: 成功（bind依存Runtime API境界テスト4件）
 - `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）

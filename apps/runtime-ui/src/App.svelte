@@ -132,7 +132,7 @@
         throw new Error(await responseErrorMessage(response, 'command'))
       }
 
-      const body = (await response.json()) as CommandResponse
+      const body = await parseOptionalJson<CommandResponse>(response)
       commandMessage = `command ${body.command?.status ?? 'accepted'}`
       await loadProjection()
     } catch (error) {
@@ -196,6 +196,14 @@
     }
   }
 
+  async function parseOptionalJson<T>(response: Response): Promise<Partial<T>> {
+    try {
+      return (await response.clone().json()) as Partial<T>
+    } catch {
+      return {}
+    }
+  }
+
   function applyMqttDelta(projectId: string, topic: string, payload: string) {
     if (!projection) return
 
@@ -238,8 +246,8 @@
     }
   }
 
-  $: runningBinding = findBinding('mock.running.001')
-  $: temperatureBinding = findBinding('mock.temperature.001')
+  $: runningBinding = findBinding(projection, 'mock.running.001')
+  $: temperatureBinding = findBinding(projection, 'mock.temperature.001')
   $: isRunning = runningBinding?.value === true
   $: temperature = typeof temperatureBinding?.value === 'number'
     ? temperatureBinding.value.toFixed(1)
@@ -253,8 +261,11 @@
       .filter((binding) => binding.quality !== 'Simulated').length ?? 0
   $: controlsDisabled = loading || !projection
 
-  function findBinding(tagId: string): BindingState | undefined {
-    return projection?.object_states
+  function findBinding(
+    currentProjection: ScreenProjection | null,
+    tagId: string
+  ): BindingState | undefined {
+    return currentProjection?.object_states
       .flatMap((object) => object.bindings)
       .find((binding) => binding.tag_id === tagId)
   }

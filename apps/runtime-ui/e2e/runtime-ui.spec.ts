@@ -64,7 +64,7 @@ test('renders projection and posts control command', async ({ page }) => {
 
   await expect(page.getByRole('heading', { name: 'Runtime Monitor' })).toBeVisible()
   await expect(page.getByText('mock-main')).toBeVisible()
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
   await expect(page.getByText('Stopped')).toBeVisible()
 
   await page.getByRole('button', { name: 'Start' }).click()
@@ -287,6 +287,93 @@ test('falls back to status when control command error body is not json', async (
   await expect(page.getByText('command 502')).toBeVisible()
 })
 
+test('falls back to accepted when control command success body is empty', async ({ page }) => {
+  let commandIssued = false
+  let projectionCalls = 0
+  const snapshotStopped = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: false, sequence: 14 }
+            : binding
+        ),
+      },
+    ],
+  }
+  const snapshotRunning = {
+    ...projectionResponse,
+    object_states: [
+      {
+        ...projectionResponse.object_states[0],
+        bindings: projectionResponse.object_states[0].bindings.map((binding) =>
+          binding.tag_id === 'mock.running.001'
+            ? { ...binding, value: true, sequence: 15 }
+            : binding
+        ),
+      },
+    ],
+  }
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    projectionCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(commandIssued ? snapshotRunning : snapshotStopped),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    commandIssued = true
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: '',
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Stopped')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start' }).click()
+
+  await expect(page.getByText('command accepted')).toBeVisible()
+  await expect(page.getByText('Running', { exact: true })).toBeVisible()
+  expect(projectionCalls).toBeGreaterThanOrEqual(2)
+})
+
+test('falls back to accepted when control command success body is not json', async ({ page }) => {
+  let commandIssued = false
+
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    commandIssued = true
+    await route.fulfill({
+      status: 202,
+      contentType: 'text/plain',
+      body: 'accepted',
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('Stopped')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Start' }).click()
+
+  await expect(page.getByText('command accepted')).toBeVisible()
+  expect(commandIssued).toBe(true)
+})
+
 test('shows error when projection fetch fails', async ({ page }) => {
   let projectionCalls = 0
 
@@ -401,7 +488,7 @@ test('recovers from projection fetch failure after manual refresh', async ({ pag
 
   await expect(page.getByText('tag server snapshot failed')).toHaveCount(0)
   await expect(page.getByText('mock-main')).toBeVisible()
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
   await expect(page.getByText('Online')).toBeVisible()
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
@@ -442,7 +529,7 @@ test('keeps last projection visible when manual refresh fails', async ({ page })
 
   await page.goto('/')
   await expect(page.getByText('mock-main')).toBeVisible()
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
 
   const refreshResponse = page.waitForResponse(
     (response) =>
@@ -455,7 +542,7 @@ test('keeps last projection visible when manual refresh fails', async ({ page })
   await expect(page.getByRole('alert')).toContainText('Projection')
   await expect(page.getByRole('alert')).toContainText('tag server snapshot failed')
   await expect(page.getByText('mock-main')).toBeVisible()
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Start' })).toBeEnabled()
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
@@ -511,7 +598,7 @@ test('updates displayed values after manual refresh', async ({ page }) => {
   })
 
   await page.goto('/')
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
 
   const refreshResponse = page.waitForResponse(
     (response) =>
@@ -521,7 +608,7 @@ test('updates displayed values after manual refresh', async ({ page }) => {
   await page.getByRole('button', { name: 'Refresh projection' }).click()
   await refreshResponse
 
-  await expect(page.getByText(/24\.2/)).toBeVisible()
+  await expect(page.getByText('24.2 °C')).toBeVisible()
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
 
@@ -546,7 +633,7 @@ test('updates displayed values after mqtt delta', async ({ page }) => {
   })
 
   await page.goto('/')
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
 
   await page.evaluate(() => {
     ;(
@@ -563,7 +650,7 @@ test('updates displayed values after mqtt delta', async ({ page }) => {
     })
   })
 
-  await expect(page.getByText(/25\.3/)).toBeVisible()
+  await expect(page.getByText('25.3 °C')).toBeVisible()
   await expect(page.getByText('delta mock.temperature.001 seq 7')).toBeVisible()
 })
 
@@ -588,7 +675,7 @@ test('ignores stale mqtt delta by sequence', async ({ page }) => {
   })
 
   await page.goto('/')
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
 
   await page.evaluate(() => {
     ;(
@@ -605,7 +692,7 @@ test('ignores stale mqtt delta by sequence', async ({ page }) => {
     })
   })
 
-  await expect(page.getByText(/21\.5/)).toBeVisible()
+  await expect(page.getByText('21.5 °C')).toBeVisible()
   await expect(page.getByText(/19\.9/)).toHaveCount(0)
   await expect(page.getByText('delta mock.temperature.001 seq 6')).toHaveCount(0)
 })
