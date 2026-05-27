@@ -184,7 +184,11 @@ fn main() {
 }
 
 fn print_help() {
-    println!(
+    println!("{}", help_text());
+}
+
+fn help_text() -> String {
+    format!(
         r#"tauri-shell options
 
 core:
@@ -211,10 +215,11 @@ supervise-loop:
                                       exit non-zero if restart attempts are exhausted
 
 service-config:
-  --service-config <path>             schema_version must be 1.0.0
+  --service-config <path>             schema_version must be {}
   root mqtt_url                       auto-injected into preview-runtime as --mqtt-url
-"#
-    );
+"#,
+        SERVICE_CONFIG_SCHEMA_VERSION
+    )
 }
 
 fn bin_dir_arg(args: &[String]) -> Option<PathBuf> {
@@ -822,5 +827,60 @@ mod tests {
 
         let error = validate_service_plan_file(&config, "test.json").expect_err("validation error");
         assert!(error.contains("invalid mqtt_url"));
+    }
+
+    #[test]
+    fn help_text_mentions_current_service_config_schema_version() {
+        let help = help_text();
+        assert!(help.contains(&format!(
+            "schema_version must be {SERVICE_CONFIG_SCHEMA_VERSION}"
+        )));
+    }
+
+    #[test]
+    fn service_config_schema_file_matches_runtime_schema_version() {
+        let schema_path = workspace_root().join("contracts/schemas/tauri-shell-service-config.schema.json");
+        let schema_raw = fs::read_to_string(&schema_path).expect("read schema");
+        let schema_json: serde_json::Value =
+            serde_json::from_str(&schema_raw).expect("parse schema json");
+        let schema_version = schema_json
+            .get("properties")
+            .and_then(|v| v.get("schema_version"))
+            .and_then(|v| v.get("const"))
+            .and_then(|v| v.as_str())
+            .expect("schema_version.const");
+
+        assert_eq!(SERVICE_CONFIG_SCHEMA_VERSION, schema_version);
+    }
+
+    #[test]
+    fn bundled_service_configs_match_runtime_schema_version() {
+        for relative in [
+            "config/tauri-shell.services.json",
+            "config/tauri-shell.services.mosquitto.json",
+        ] {
+            let config_path = workspace_root().join(relative);
+            let config_raw = fs::read_to_string(&config_path).expect("read config");
+            let config_json: serde_json::Value =
+                serde_json::from_str(&config_raw).expect("parse config json");
+            let schema_version = config_json
+                .get("schema_version")
+                .and_then(|v| v.as_str())
+                .expect("schema_version");
+
+            assert_eq!(
+                SERVICE_CONFIG_SCHEMA_VERSION,
+                schema_version,
+                "schema_version mismatch in {}",
+                config_path.display()
+            );
+        }
+    }
+
+    fn workspace_root() -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.pop();
+        path.pop();
+        path
     }
 }

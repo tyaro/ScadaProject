@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "schema_version": { "type": "string", "minLength": 1 },
+    "schema_version": { "type": "string", "const": "1.0.0" },
     "mqtt_url": {
       "type": "string",
       "minLength": 1,
@@ -37,5 +37,5 @@
       }
     }
   },
-  "required": ["services"]
+  "required": ["schema_version", "services"]
 }

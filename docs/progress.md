@@ -170,6 +170,7 @@
 - `service-config` のJSON Schema追加
   - `contracts/schemas/tauri-shell-service-config.schema.json` を追加
   - `config/tauri-shell.services.json` に `schema_version` を追加
+  - `schema_version` をSchemaで `const: "1.0.0"` 固定 + required化
 - `service-config` 読み込み時のバージョン検証追加
   - `schema_version` が `1.0.0` 以外の場合は起動前にエラー終了
   - エラーメッセージに入力値と期待値を表示
@@ -207,6 +208,8 @@
   - `--supervise-summary-json` 指定時に `cycle_summary` / `final_summary` をJSON行で出力
 - `tauri-shell` CLIヘルプ整備
   - `--help` / `-h` で supervisor系オプション説明を表示
+  - ヘルプ文言の `schema_version` と `SERVICE_CONFIG_SCHEMA_VERSION` の同期テストを追加
+  - Schemaファイルと同梱service-configの `schema_version` 差分チェックテストを追加
 - 再起動回数カウンタのリセット条件追加（最小版）
   - `--restart-reset-after-ms` で安定稼働時間しきい値を指定
   - しきい値以上連続稼働したサービスは再起動attemptsを0へリセット
@@ -234,7 +237,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. `--mqtt-subscribe` の再接続失敗時ログ（snapshot再同期トリガ、バックオフ秒）を回帰確認できるテスト方針を整理する。
-3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
+3. `preview-runtime --snapshot-screen --mqtt-subscribe` 実行時ログ（失敗→snapshot再同期→backoff）を最小自動化で検証する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -266,6 +269,7 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
+- `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
 - `nvm use 24 && npm --version`: `11.13.0`
 - `cargo fmt`: 成功
 - `cargo test`: 成功
