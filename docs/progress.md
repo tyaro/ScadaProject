@@ -195,6 +195,8 @@
   - `rust-toolchain.toml` を `channel = "stable"` へ修正
   - 2回目CI失敗原因を特定（`scripts/check_local_ci.sh` の `nvm use 24` がCI環境で失敗）
   - `scripts/check_local_ci.sh` を修正し、`nvm` 非依存でNode 24を検証する形へ改善
+  - 3回目CI失敗原因を特定（`tauri-shell` の `supervise_loop_reset` テストで `events=START_ERROR,RESTARTED` を想定外扱い）
+  - `crates/tauri-shell/tests/supervise_loop_reset.rs` のイベント判定を修正し、`RESTARTED` を含む複合イベント列を許容
 - Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
   - `--include-rumqttd` で起動計画に `rumqttd` を追加
   - `--rumqttd-config` / `--rumqttd-bin` で設定ファイルと実行ファイルを指定可能
@@ -305,6 +307,8 @@
 - `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功
 - `GH_PAGER=cat gh run view 26506631713 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`scripts/check_local_ci.sh` の `nvm use 24`）
 - `scripts/check_local_ci.sh`: 成功（Node 24チェック追加後）
+- `GH_PAGER=cat gh run view 26506744140 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`supervise_loop_reset` のイベントコード判定が厳密すぎる）
+- `cargo test -p tauri-shell --test supervise_loop_reset`: 成功（イベントコード判定修正後）
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）

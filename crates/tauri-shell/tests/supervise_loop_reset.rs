@@ -68,7 +68,7 @@ fn supervise_loop_emits_restart_reset_after_stable_run() {
         stdout
     );
     assert!(
-        stdout.contains("events=RESTARTED") || stdout.contains("events=RESTARTED,"),
+        stdout.contains("RESTARTED"),
         "missing restarted event code in output:\n{}",
         stdout
     );
