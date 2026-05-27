@@ -143,6 +143,10 @@ RESTサーバーは、依存追加前の最小実装として `tag-server --serv
   - 標準ジョブでは `scripts/check_local_ci.sh` を実行する。
   - ポートbindが許可されるジョブでは `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 scripts/check_local_ci.sh` を実行する。
   - bind依存ジョブは失敗時ログ（`/tmp/preview-runtime-mqtt-resync.log`, `/tmp/tag-server-mqtt-resync.log`, Playwright traces）をartifactとして保存する。
+- GitHub Actions:
+  - `.github/workflows/ci.yml` を追加済み。
+  - `push` / `pull_request` では標準ジョブのみ実行する。
+  - `workflow_dispatch` で `run_bind_tests=true` を指定した場合のみ、Runtime UI E2Eとbind依存チェックを実行する。
 
 ## `tauri-shell` CLI仕様メモ（service-config/supervisor）
 

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_bind_tests:
+        description: "Run bind-dependent checks and Runtime UI E2E"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  standard:
+    name: Standard Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        run: rustup update stable && rustup default stable
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/runtime-ui/package-lock.json
+
+      - name: Install Runtime UI dependencies
+        working-directory: apps/runtime-ui
+        run: npm ci
+
+      - name: Run standard local CI checks
+        run: scripts/check_local_ci.sh
+
+  bind-dependent:
+    name: Bind-Dependent Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.run_bind_tests == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        run: rustup update stable && rustup default stable
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/runtime-ui/package-lock.json
+
+      - name: Install Runtime UI dependencies
+        working-directory: apps/runtime-ui
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: apps/runtime-ui
+        run: npx playwright install --with-deps chromium
+
+      - name: Run bind-dependent local CI checks
+        env:
+          RUN_BIND_TESTS: "1"
+          RUN_RUNTIME_UI_E2E: "1"
+        run: scripts/check_local_ci.sh
+
+      - name: Upload bind-dependent logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bind-dependent-logs
+          path: |
+            /tmp/preview-runtime-mqtt-resync.log
+            /tmp/tag-server-mqtt-resync.log
+            apps/runtime-ui/test-results
+          if-no-files-found: ignore

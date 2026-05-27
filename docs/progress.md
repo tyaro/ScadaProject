@@ -174,6 +174,11 @@
   - `RUN_RUNTIME_UI_E2E=1` でPlaywright E2Eを実行
   - `RUN_BIND_TESTS=1` でbind依存のPreview RuntimeテストとMQTT再同期ログ検証を実行
   - Preview RuntimeのTCP listener依存テストは `#[ignore]` に分離し、標準チェックで失敗しないよう整理
+- GitHub Actions CIを追加
+  - `.github/workflows/ci.yml` を追加
+  - `push` / `pull_request` では標準チェックを実行
+  - `workflow_dispatch` の `run_bind_tests=true` でPlaywright E2Eとbind依存チェックを実行
+  - bind依存チェック失敗時は `/tmp` ログとPlaywright結果をartifact保存
 - Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
   - `--include-rumqttd` で起動計画に `rumqttd` を追加
   - `--rumqttd-config` / `--rumqttd-bin` で設定ファイルと実行ファイルを指定可能
@@ -252,7 +257,7 @@
 ## 次に行うこと
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
-2. `scripts/check_local_ci.sh` のCI導入先（GitHub Actions等）を決め、実際のworkflowファイルを追加する。
+2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
 3. Runtime UIのエラー通知をもう一段整理する（エラー種別の区別、履歴/詳細表示が必要か判断する）。
 
 ## フェーズ0完了条件棚卸し
@@ -293,6 +298,8 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 12 passed（projection未取得時の操作無効化、再取得失敗時の既存表示保持を含む）
 - `scripts/check_local_ci.sh`: 成功（標準チェック、bind依存チェックはskip）
 - `cargo test -p preview-runtime -- --ignored`: 成功（bind依存Runtime API境界テスト4件）
+- `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）
+- `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 scripts/check_local_ci.sh`: 成功（GitHub Actions手動bind依存ジョブ相当、Runtime UI E2E 12 passed + bind依存検証）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
