@@ -246,6 +246,9 @@ Runtime API境界テストを強化
   - Builder API の screen 保存/読込で `contracts/schemas/screen-definition.schema.json` による厳密検証を有効化し、schema違反は `400`（PUT）または `500`（不正ファイル読込）で返すようにした
   - Builder API の単体テストを 12 ケースへ拡張し、schema違反入力と不正screenファイル読込の境界を追加固定した
   - `scripts/check_local_ci.sh` に `builder-api` テスト実行と `contracts/openapi/builder.yaml` のパス必須チェック（`/health`, `/api/v1/errors/map`, `/api/v1/screens/{screen_id}`）を追加した
+  - `config/tauri-shell.services.mosquitto.json` の重複連結JSONを修正し、`tauri-shell` の同梱config整合テスト（`bundled_service_configs_match_runtime_schema_version`）を再び通過させた
+  - `crates/preview-runtime/src/lib.rs` と `crates/tag-server/src/lib.rs` を整形し、`scripts/check_local_ci.sh` の先頭 `cargo fmt --check` 停止を解消した
+  - `RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 scripts/check_local_ci.sh` を最後まで実行し、標準ローカルCI入口（fmt + Rust主要crate + Builder OpenAPIチェック + runtime-ui check）が通過する状態に戻した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -355,8 +358,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `scripts/check_local_ci.sh` の先頭 `cargo fmt --check` が既存未整形差分（`preview-runtime` / `tag-server`）で停止するため、repo全体の整形方針を決めた上でCI入口を安定化する。
-2. Builder UI の project save を Tauri Shell 側のファイル選択/保存UX（保存先表示・失敗理由提示）と接続し、運用向け導線を整える。
+1. Builder UI の project save を Tauri Shell 側のファイル選択/保存UX（保存先表示・失敗理由提示）と接続し、運用向け導線を整える。
+2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -389,7 +392,7 @@ Runtime API境界テストを強化
 - `ruby --disable-gems -e '...contracts/openapi/builder.yaml path assertions...'`: 成功
 - `ruby -e "require 'yaml'; YAML.load_file('contracts/openapi/builder.yaml')"`: 成功
 - `cargo test -p builder-api`: 成功（12 passed）
-- `RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 scripts/check_local_ci.sh`: 先頭の `cargo fmt --check` で既存未整形差分により停止（Builder追加チェックまで未到達）
+- `RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 scripts/check_local_ci.sh`: 成功（fmt + Rust主要crate + Builder OpenAPI必須パスチェック + runtime-ui check）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
 - `GH_PAGER=cat gh run view 26506251734 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`rust-toolchain.toml` の channel が `stable-aarch64-apple-darwin`）
 - `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功

@@ -4,7 +4,6 @@ use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS, Transport};
-use serde::Serialize;
 use scada_core::command::{ControlCommand, ControlCommandStatus};
 use scada_core::driver::{
     driver_write_request_to_json, driver_write_response_from_json_str,
@@ -14,6 +13,7 @@ use scada_core::mqtt::{tag_value_topic, MqttBrokerEndpoint, MqttBrokerTransport}
 use scada_core::tag::{
     tag_value_from_json_value, tag_value_to_json, QualityCode, TagValue, TagValueData,
 };
+use serde::Serialize;
 use tokio::runtime::Runtime;
 
 #[derive(Debug, Default)]
@@ -279,7 +279,10 @@ impl TagServerApi {
 
         match serde_json::to_string(&response) {
             Ok(body) => HttpResponse::json(200, body),
-            Err(error) => HttpResponse::json(500, error_json(&format!("operation log serialization failed: {error}"))),
+            Err(error) => HttpResponse::json(
+                500,
+                error_json(&format!("operation log serialization failed: {error}")),
+            ),
         }
     }
 
@@ -1029,11 +1032,16 @@ fn skip_ws(bytes: &[u8], mut index: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn assert_json_error_response(response: &HttpResponse, expected_status: u16, expected_fragment: &str) {
+    fn assert_json_error_response(
+        response: &HttpResponse,
+        expected_status: u16,
+        expected_fragment: &str,
+    ) {
         assert_eq!(expected_status, response.status_code);
         assert_eq!("application/json", response.content_type);
 
-        let body = serde_json::from_str::<serde_json::Value>(&response.body).expect("error json body");
+        let body =
+            serde_json::from_str::<serde_json::Value>(&response.body).expect("error json body");
         let message = body
             .get("error")
             .and_then(serde_json::Value::as_str)
@@ -1169,10 +1177,22 @@ mod tests {
         assert!(!items.is_empty());
 
         let first = &items[0];
-        assert_eq!(Some("cmd-log-1"), first.get("command_id").and_then(serde_json::Value::as_str));
-        assert_eq!(Some("operator"), first.get("user_id").and_then(serde_json::Value::as_str));
-        assert_eq!(Some("mock.running.001"), first.get("tag_id").and_then(serde_json::Value::as_str));
-        assert_eq!(Some("Validated"), first.get("status").and_then(serde_json::Value::as_str));
+        assert_eq!(
+            Some("cmd-log-1"),
+            first.get("command_id").and_then(serde_json::Value::as_str)
+        );
+        assert_eq!(
+            Some("operator"),
+            first.get("user_id").and_then(serde_json::Value::as_str)
+        );
+        assert_eq!(
+            Some("mock.running.001"),
+            first.get("tag_id").and_then(serde_json::Value::as_str)
+        );
+        assert_eq!(
+            Some("Validated"),
+            first.get("status").and_then(serde_json::Value::as_str)
+        );
     }
 
     #[test]
@@ -1203,9 +1223,22 @@ mod tests {
             .expect("items");
 
         assert!(items.len() >= 2);
-        assert_eq!(Some("cmd-log-2"), items[0].get("command_id").and_then(serde_json::Value::as_str));
-        assert_eq!(Some("Rejected"), items[0].get("status").and_then(serde_json::Value::as_str));
-        assert_eq!(Some("cmd-log-1"), items[1].get("command_id").and_then(serde_json::Value::as_str));
+        assert_eq!(
+            Some("cmd-log-2"),
+            items[0]
+                .get("command_id")
+                .and_then(serde_json::Value::as_str)
+        );
+        assert_eq!(
+            Some("Rejected"),
+            items[0].get("status").and_then(serde_json::Value::as_str)
+        );
+        assert_eq!(
+            Some("cmd-log-1"),
+            items[1]
+                .get("command_id")
+                .and_then(serde_json::Value::as_str)
+        );
     }
 
     #[test]
@@ -1259,10 +1292,22 @@ mod tests {
         assert_eq!(502, response.status_code);
         assert_eq!("application/json", response.content_type);
         let body = serde_json::from_str::<serde_json::Value>(&response.body).expect("json");
-        assert_eq!(Some(1), body.get("received").and_then(serde_json::Value::as_u64));
-        assert_eq!(Some(1), body.get("ingested").and_then(serde_json::Value::as_u64));
-        assert_eq!(Some(0), body.get("stale").and_then(serde_json::Value::as_u64));
-        assert_eq!(Some(0), body.get("published").and_then(serde_json::Value::as_u64));
+        assert_eq!(
+            Some(1),
+            body.get("received").and_then(serde_json::Value::as_u64)
+        );
+        assert_eq!(
+            Some(1),
+            body.get("ingested").and_then(serde_json::Value::as_u64)
+        );
+        assert_eq!(
+            Some(0),
+            body.get("stale").and_then(serde_json::Value::as_u64)
+        );
+        assert_eq!(
+            Some(0),
+            body.get("published").and_then(serde_json::Value::as_u64)
+        );
         let publish_errors = body
             .get("publish_errors")
             .and_then(serde_json::Value::as_array)

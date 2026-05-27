@@ -696,7 +696,12 @@ fn validate_modify_rule_condition(
                 }
             },
             "in" => {
-                if condition.values.as_ref().map(|values| values.is_empty()).unwrap_or(true) {
+                if condition
+                    .values
+                    .as_ref()
+                    .map(|values| values.is_empty())
+                    .unwrap_or(true)
+                {
                     return Err(ModifyRuleValidationError::new(
                         "MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES",
                         path,
@@ -2110,7 +2115,9 @@ mod tests {
         response
     }
 
-    fn runtime_api_handle_control_command_with_raw_response(raw_response: &str) -> RuntimeHttpResponse {
+    fn runtime_api_handle_control_command_with_raw_response(
+        raw_response: &str,
+    ) -> RuntimeHttpResponse {
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
         let addr = listener.local_addr().expect("addr");
         let raw = raw_response.to_string();
@@ -2120,7 +2127,9 @@ mod tests {
             assert_eq!("POST", request.method);
             assert_eq!("/api/v1/control-commands", request.path);
             assert!(request.body.contains(r#""command_id":"cmd-1""#));
-            stream.write_all(raw.as_bytes()).expect("write raw response");
+            stream
+                .write_all(raw.as_bytes())
+                .expect("write raw response");
         });
 
         let api = RuntimeApi::new(
@@ -2150,7 +2159,9 @@ mod tests {
             let request = read_runtime_http_request(&mut stream).expect("request");
             assert_eq!("POST", request.method);
             assert_eq!("/api/v1/tags/snapshot", request.path);
-            stream.write_all(raw.as_bytes()).expect("write raw response");
+            stream
+                .write_all(raw.as_bytes())
+                .expect("write raw response");
         });
 
         let api = RuntimeApi::new(
@@ -2174,7 +2185,11 @@ mod tests {
         r#"{"command_id":"cmd-1","idempotency_key":"key-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#
     }
 
-    fn assert_json_error_response(response: &RuntimeHttpResponse, expected_status: u16, message: &str) {
+    fn assert_json_error_response(
+        response: &RuntimeHttpResponse,
+        expected_status: u16,
+        message: &str,
+    ) {
         assert_eq!(expected_status, response.status_code);
         assert_eq!("application/json", response.content_type);
 
@@ -2385,7 +2400,10 @@ mod tests {
         );
         assert_eq!(None, projection.object_states[0].bindings[0].value);
         assert_eq!(None, projection.object_states[0].modifiers[0].rendered);
-        assert_eq!(Some("#00ff00".to_string()), projection.object_states[0].modifiers[0].true_value);
+        assert_eq!(
+            Some("#00ff00".to_string()),
+            projection.object_states[0].modifiers[0].true_value
+        );
         assert_eq!(
             Some("#999999".to_string()),
             projection.object_states[0].modifiers[0].false_value
@@ -2607,10 +2625,7 @@ mod tests {
         };
 
         let error = validate_modify_rule_condition(&condition, "test").expect_err("invalid");
-        assert_eq!(
-            "MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX",
-            error.code
-        );
+        assert_eq!("MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX", error.code);
         assert!(error.detail.contains("requires min and max"));
     }
 
