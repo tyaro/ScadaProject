@@ -47,6 +47,7 @@
     "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state"
   const propertyOptions = ['visible', 'color', 'text']
   const conditionOpOptions = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'any', 'all']
+  const screenIdPattern = /^[A-Za-z0-9_-]+$/
   const initialScreenObjects: ScreenObjectForm[] = [
     {
       objectId: 'pump-001',
@@ -423,6 +424,38 @@
     jsonFileInput?.click()
   }
 
+  function isScreenIdValid(value: string): boolean {
+    const trimmed = value.trim()
+    return trimmed !== '' && screenIdPattern.test(trimmed)
+  }
+
+  function normalizedScreenIdOrError(action: 'load' | 'save'): string | null {
+    const trimmed = screenId.trim()
+    if (trimmed === '') {
+      ioStatus = `Project ${action} failed: screen_id is required`
+      return null
+    }
+
+    if (!screenIdPattern.test(trimmed)) {
+      ioStatus = 'Project I/O failed: screen_id must match [A-Za-z0-9_-]'
+      return null
+    }
+
+    if (trimmed !== screenId) {
+      screenId = trimmed
+    }
+
+    return trimmed
+  }
+
+  function projectScreenPath(value: string): string {
+    const trimmed = value.trim()
+    if (trimmed === '') {
+      return 'config/screens/<screen_id>.screen.json'
+    }
+    return `config/screens/${trimmed}.screen.json`
+  }
+
   function applyLoadedScreenDefinition(parsed: SerializedScreenDefinition) {
     schemaVersion = parsed.schema_version
     screenId = parsed.screen_id
@@ -438,9 +471,14 @@
   }
 
   async function loadScreenDefinitionFromProject() {
-    ioStatus = `Loading ${screenId} from project...`
+    const targetScreenId = normalizedScreenIdOrError('load')
+    if (!targetScreenId) {
+      return
+    }
+
+    ioStatus = `Loading ${targetScreenId} from project...`
     try {
-      const httpResponse = await fetch(`/api/v1/screens/${encodeURIComponent(screenId)}`)
+      const httpResponse = await fetch(`/api/v1/screens/${encodeURIComponent(targetScreenId)}`)
       if (!httpResponse.ok) {
         const errorBody = await parseError(httpResponse)
         throw new Error(errorBody)
@@ -459,9 +497,15 @@
   }
 
   async function saveScreenDefinitionToProject() {
-    ioStatus = `Saving ${screenId} to project...`
+    const targetScreenId = normalizedScreenIdOrError('save')
+    if (!targetScreenId) {
+      return
+    }
+
+    ioStatus = `Saving ${targetScreenId} to project...`
     try {
       const payload = buildScreenDefinition()
+      payload.screen_id = targetScreenId
       const httpResponse = await fetch(`/api/v1/screens/${encodeURIComponent(payload.screen_id)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -675,6 +719,45 @@
 
       <textarea bind:value={inputError} aria-label="Raw condition error"></textarea>
 
+      <div class="project-io" data-testid="project-io-panel">
+        <h3>Project Screen Save</h3>
+        <div class="binding-grid two-up">
+          <label class="field">
+            <span>Screen ID</span>
+            <input data-testid="screen-id-field" bind:value={screenId} type="text" />
+          </label>
+          <label class="field">
+            <span>Project ID</span>
+            <input data-testid="project-id-field" bind:value={projectId} type="text" />
+          </label>
+          <label class="field">
+            <span>Screen Name</span>
+            <input data-testid="screen-name-field" bind:value={screenName} type="text" />
+          </label>
+          <label class="field">
+            <span>Schema Version</span>
+            <input data-testid="schema-version-field" bind:value={schemaVersion} type="text" />
+          </label>
+          <label class="field">
+            <span>Canvas Width</span>
+            <input data-testid="canvas-width-field" bind:value={canvasWidth} type="number" min="1" />
+          </label>
+          <label class="field">
+            <span>Canvas Height</span>
+            <input data-testid="canvas-height-field" bind:value={canvasHeight} type="number" min="1" />
+          </label>
+        </div>
+        <div class="result-row compact project-path-row" data-testid="project-path-row">
+          <span>Project Path</span>
+          <code>{projectScreenPath(screenId)}</code>
+        </div>
+        {#if !isScreenIdValid(screenId)}
+          <p class="inline-error" data-testid="screen-id-validation-message">
+            screen_id must match [A-Za-z0-9_-]
+          </p>
+        {/if}
+      </div>
+
       <div class="actions">
         <button class="primary" type="button" onclick={mapError} disabled={loading}>
           {loading ? 'Mapping...' : 'Map error'}
@@ -694,7 +777,13 @@
         <button class="secondary" type="button" data-testid="load-project-screen-button" onclick={loadScreenDefinitionFromProject}>
           Load from project
         </button>
-        <button class="secondary" type="button" data-testid="save-project-screen-button" onclick={saveScreenDefinitionToProject}>
+        <button
+          class="secondary"
+          type="button"
+          data-testid="save-project-screen-button"
+          onclick={saveScreenDefinitionToProject}
+          disabled={!isScreenIdValid(screenId)}
+        >
           Save to project
         </button>
       </div>

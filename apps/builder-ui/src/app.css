@@ -205,8 +205,33 @@ button:focus {
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 14px;
+}
+
+.project-io {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 252, 246, 0.9);
+}
+
+.project-io h3 {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.project-path-row {
+  margin-top: 12px;
+}
+
+.inline-error {
+  margin: 10px 0 0;
+  color: var(--bad);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .primary,

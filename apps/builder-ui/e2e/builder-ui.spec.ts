@@ -186,12 +186,40 @@ test('loads and saves screen-definition via builder api', async ({ page }) => {
 
   await page.goto('/')
 
+  await expect(page.getByTestId('project-path-row')).toContainText('config/screens/mock-main.screen.json')
+
   await page.getByTestId('load-project-screen-button').click()
   await expect(page.getByTestId('io-status')).toContainText('Loaded mock-main from project')
   await expect(page.getByTestId('object-field')).toHaveValue('project-pump-001')
+  await expect(page.getByTestId('screen-id-field')).toHaveValue('mock-main')
+  await expect(page.getByTestId('project-id-field')).toHaveValue('demo')
+  await expect(page.getByTestId('screen-name-field')).toHaveValue('Mock Main Screen')
   await expect(page.getByTestId('condition-op-field')).toHaveValue('gt')
   await expect(page.getByTestId('condition-value-field')).toHaveValue('24')
 
   await page.getByTestId('save-project-screen-button').dispatchEvent('click')
   await expect(page.getByTestId('io-status')).toContainText('Saved to config/screens/mock-main.screen.json')
+})
+
+test('blocks project save when screen_id is invalid', async ({ page }) => {
+  let screenApiCallCount = 0
+  await page.route('**/api/v1/screens/**', async (route) => {
+    screenApiCallCount += 1
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'unexpected call' }),
+    })
+  })
+
+  await page.goto('/')
+  await page.getByTestId('screen-id-field').fill('bad id')
+
+  await expect(page.getByTestId('screen-id-validation-message')).toContainText('screen_id must match [A-Za-z0-9_-]')
+  await expect(page.getByTestId('save-project-screen-button')).toBeDisabled()
+  await expect(page.getByTestId('project-path-row')).toContainText('config/screens/bad id.screen.json')
+
+  await page.getByTestId('load-project-screen-button').click()
+  await expect(page.getByTestId('io-status')).toContainText('Project I/O failed: screen_id must match [A-Za-z0-9_-]')
+  await expect(screenApiCallCount).toBe(0)
 })
