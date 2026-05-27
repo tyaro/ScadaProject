@@ -46,6 +46,7 @@
 
   type RuntimeUiTestHook = {
     applyDelta: (topic: string, payload: RuntimeTagValue) => void
+    applyDeltaRaw: (topic: string, payload: string) => void
   }
 
   type ErrorSource = 'Projection' | 'Command' | 'MQTT'
@@ -69,6 +70,9 @@
       ;(window as typeof window & { __runtimeUiTestHook__?: RuntimeUiTestHook }).__runtimeUiTestHook__ = {
         applyDelta: (topic, payload) => {
           applyMqttDelta(mqttProjectId || projection?.project_id || 'demo', topic, JSON.stringify(payload))
+        },
+        applyDeltaRaw: (topic, payload) => {
+          applyMqttDelta(mqttProjectId || projection?.project_id || 'demo', topic, payload)
         },
       }
     }

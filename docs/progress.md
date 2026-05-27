@@ -167,6 +167,9 @@
   - 手動リフレッシュ操作後にprojection再取得で表示値が更新されることを回帰テストへ追加
   - MQTT delta受信相当イベント後に表示値とdelta状態が更新されることを回帰テストへ追加
   - 古いsequenceのMQTT deltaを破棄し、表示値を更新しないことを回帰テストへ追加
+  - MQTT delta payloadが不正JSONの場合に `MQTT` 種別の `role="alert"` を表示し、表示値を保持することを回帰テストへ追加
+  - MQTT delta topicがbinding tagと一致しない場合に表示値とdelta状態を更新せず、エラー通知も出さないことを回帰テストへ追加
+  - テスト用フックに `applyDeltaRaw` を追加し、不正payloadシナリオを再現可能にした
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -264,7 +267,6 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
-3. Runtime UIのMQTTエラー経路（不正payload、topic不一致）をE2Eで確認する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -307,6 +309,8 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（ControlCommand成功応答フォールバック + 表示再計算修正後）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（ControlCommand成功時の空/非JSON応答フォールバックを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（上部表示とbinding tableの値一貫性確認を含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（MQTT エラー経路E2E追加後、テストフック `applyDeltaRaw` 追加後）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 16 passed（MQTT 不正payload/topic不一致シナリオを含む）
 - `scripts/check_local_ci.sh`: 成功（標準チェック、bind依存チェックはskip）
 - `cargo test -p preview-runtime -- --ignored`: 成功（bind依存Runtime API境界テスト4件）
 - `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）

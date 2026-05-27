@@ -700,3 +700,91 @@ test('ignores stale mqtt delta by sequence', async ({ page }) => {
   await expect(page.getByText(/19\.9/)).toHaveCount(0)
   await expect(page.getByText('delta mock.temperature.001 seq 6')).toHaveCount(0)
 })
+
+test('shows MQTT error when delta payload is invalid json', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('21.5 °C')).toBeVisible()
+
+  await page.evaluate(() => {
+    ;(
+      window as Window & {
+        __runtimeUiTestHook__?: {
+          applyDeltaRaw: (topic: string, payload: string) => void
+        }
+      }
+    ).__runtimeUiTestHook__?.applyDeltaRaw(
+      'scada/demo/tag/mock.temperature.001/value',
+      '{not-json'
+    )
+  })
+
+  await expect(page.getByRole('alert')).toContainText('MQTT')
+  await expect(page.getByText('21.5 °C')).toBeVisible()
+  await expect(page.getByText(/^Deltas$/)).toBeVisible()
+  await expect(
+    page.getByText('delta mock.temperature.001', { exact: false })
+  ).toHaveCount(0)
+})
+
+test('ignores mqtt delta when topic does not match tag', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText('21.5 °C')).toBeVisible()
+
+  await page.evaluate(() => {
+    ;(
+      window as Window & {
+        __runtimeUiTestHook__?: {
+          applyDelta: (topic: string, payload: unknown) => void
+        }
+      }
+    ).__runtimeUiTestHook__?.applyDelta('scada/demo/tag/mock.other.999/value', {
+      tag_id: 'mock.temperature.001',
+      value: 99.9,
+      quality: 'Simulated',
+      sequence: 100,
+    })
+  })
+
+  await expect(page.getByText('21.5 °C')).toBeVisible()
+  await expect(page.getByText(/99\.9/)).toHaveCount(0)
+  await expect(page.getByText('delta mock.temperature.001 seq 100')).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
