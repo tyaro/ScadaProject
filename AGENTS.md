@@ -67,6 +67,7 @@ Prefer the order in `docs/development_plan.md`:
 - Keep responsibilities separated by component boundary.
 - Prefer the latest stable compatible versions of libraries, crates, and tools.
 - If an older version is required, document the reason and the compatibility constraint in the same change.
+- Unless the user explicitly asks for compatibility considerations, compatibility does not need to be considered while implementation is progressing.
 - Keep Tauri Rust code thin: process management, OS integration, window management, file selection, and local service supervision.
 - Put business logic in services such as Builder API, Tag Server, Runtime, Driver Manager, and Alarm Engine.
 - Define external and internal contracts before relying on implicit data shapes.
