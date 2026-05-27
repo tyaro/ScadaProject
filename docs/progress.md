@@ -158,6 +158,7 @@
 - Preview RuntimeのMQTT監視ログ改善
   - `--mqtt-subscribe` の既定ログを要約化（projection先頭行のみ）
   - `--verbose-projection` 指定時は従来の詳細projectionログを出力
+  - `scripts/check_preview_runtime_mqtt_resync.sh` を追加し、失敗→snapshot再同期→backoffログを最小自動検証できるようにした
 - Tauri Shellのローカルサービス計画に `rumqttd` を任意統合
   - `--include-rumqttd` で起動計画に `rumqttd` を追加
   - `--rumqttd-config` / `--rumqttd-bin` で設定ファイルと実行ファイルを指定可能
@@ -236,8 +237,8 @@
 ## 次に行うこと
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
-2. `--mqtt-subscribe` の再接続失敗時ログ（snapshot再同期トリガ、バックオフ秒）を回帰確認できるテスト方針を整理する。
-3. `preview-runtime --snapshot-screen --mqtt-subscribe` 実行時ログ（失敗→snapshot再同期→backoff）を最小自動化で検証する。
+2. `preview-runtime --snapshot-screen --mqtt-subscribe` のログ自動検証スクリプトをCI実行へ組み込む方針（実行条件/権限）を整理する。
+3. Runtime APIのHTTP境界テストで、`/api/v1/screens/projection` の異常入力（invalid JSON, screen_path不正）ケースを拡充する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -270,6 +271,7 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
+- `scripts/check_preview_runtime_mqtt_resync.sh`: 成功（`mqtt-subscribe` 失敗→snapshot再同期→`backoff=1s` ログを検証）
 - `nvm use 24 && npm --version`: `11.13.0`
 - `cargo fmt`: 成功
 - `cargo test`: 成功
