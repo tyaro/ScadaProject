@@ -394,6 +394,26 @@ scada/{project_id}/event/system
 - QoS、retain、payload形式は用途別に定義する。
 - MQTT payloadには `tag_id`、`value`、`quality`、`server_timestamp`、`sequence` を含める。
 
+## 4.2.4 RESTエラー応答とUI表示方針
+
+Runtime APIおよびTag ServerのRESTエラー応答は、クライアントが安定して表示できるよう、JSON構造を統一する。
+
+### エラー応答の基本
+
+- 基本形式は `{"error":"<message>"}` とする。
+- 値取り込みは成功したがMQTT publishに失敗したケースでは、`driver-values` で `publish_errors` 配列を返せるようにする。
+- 非JSON応答を返す実装や中継経路が残る場合でも、クライアントはフォールバック表示できるようにする。
+
+### Runtime UIの表示優先順位
+
+Runtime UIはAPIエラー本文を次の優先順位で解釈する。
+
+1. `error` フィールド
+2. `publish_errors[0]`
+3. `<endpoint-label> <status>`（例: `command 502`, `projection 503`）
+
+この優先順位はE2Eで固定化し、回帰時に表示文言の意図しない変化を検出できるようにする。
+
 ## 4.3 ドライバマネージャーとマニフェスト駆動
 
 通信ドライバはSCADA本体から分離した別プロセスとして実装する。Driver Managerはドライバマニフェストを読み込み、対応プロトコル、実行ファイル、設定スキーマ、権限、ヘルスチェック方法をもとにドライバを管理する。

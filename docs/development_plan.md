@@ -78,7 +78,7 @@ Svelte画面
 | フェーズ | 状態 | 現在の補足 |
 | --- | --- | --- |
 | フェーズ0: Mock通信基盤 | 完了（主要完了条件を満たす） | Mock値流れ、Mock書き込み流れ、MQTT配信、ローカルsupervisor運用を確認済み |
-| フェーズ1: Runtime最小縦断 | 実施中 | Runtime API境界テストを継続拡張中。`projection` / `control-command` の失敗系 `502` 正規化を強化済み |
+| フェーズ1: Runtime最小縦断 | 実施中 | Runtime API/Tag ServerのエラーJSON契約を固定化し、Runtime UIで `error` / `publish_errors` / statusフォールバック表示をE2Eで検証済み |
 | フェーズ2: Builder最小機能 | 未着手 | フェーズ1完了条件の充足後に着手 |
 | フェーズ3: 現場通信・履歴・アラーム | 未着手 | 実ドライバ、履歴、Alarm Engineは後続 |
 | フェーズ4: 制御・帳票・公開管理 | 未着手 | MVPスコープ外のため後続 |
@@ -170,6 +170,7 @@ Mockタグ値が `Driver Manager -> Tag Server -> Runtime -> SVG画面` へ反�
 - SVGバインディングテスト
 - 制御指令ライフサイクルテスト
 - 操作ログ保存テスト
+- Runtime UIエラー表示回帰テスト（`error` / `publish_errors` / 非JSONフォールバック）
 
 ## 3.3 フェーズ2: Builder最小機能
 

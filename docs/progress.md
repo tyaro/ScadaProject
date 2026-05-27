@@ -199,6 +199,8 @@ Runtime API境界テストを強化
   - テスト用フックに `applyDeltaRaw` を追加し、不正payloadシナリオを再現可能にした
   - APIエラー本文に `publish_errors` 配列のみがある場合、先頭エラーを表示するよう改善
   - `control-commands` が `502` + `publish_errors` を返すケースのUI回帰テストを追加
+  - 基本設計書へRESTエラー応答のUI表示優先順位（`error` -> `publish_errors[0]` -> status）を明文化
+  - 開発計画書のフェーズ1サマリにエラー契約固定化とUI回帰検証の完了内容を反映
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -304,9 +306,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `runtime.yaml` の他エンドポイント（`/api/v1/tags/snapshot`, `/api/v1/driver-values`）にもErrorResponse schema適用方針を整理し、実装と契約の整合差分を洗い出す。
-2. Runtime UI E2EでTag Server由来の `driver-values` publish失敗（`502 + publish_errors`）時の表示方針を決め、必要ならAPIプロキシ層のエラーハンドリングを拡張する。
-3. Runtime UIのエラー表示文言を契約ドキュメント化し、`error` / `publish_errors` / 非JSON本文での優先順位を明文化する。
+1. Runtime API/Tag ServerのOpenAPIレスポンス定義を共通コンポーネント化し、今後追加するエンドポイントでも同じErrorResponse運用を強制できるよう整理する。
+2. フェーズ1完了条件に対する未充足項目（SVG modify rulesの詳細、操作ログ最小保存の実動確認）を洗い出し、テスト観点を具体化する。
 
 ## フェーズ0完了条件棚卸し
 
