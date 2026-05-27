@@ -156,7 +156,18 @@
   - `control-command` でTag Server応答のHTTPヘッダ終端欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `control-command` でTag Server応答のステータス行欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `control-command` でTag Server応答のHTTPバージョン不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+Runtime API境界テストを強化
+  - `control-command` でTag Server応答のHTTPステータス行欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` でTag Server応答のHTTPバージョン不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `control-command` でTag Server応答のステータスコード不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `control-command` / `projection` の主要エラー応答（`400/401/404/502`）で `application/json` + `{"error":"..."}` 形式を共通アサートで固定化
+  - Runtime APIの未知ルート（`404`）とprojection認証エラー（`401`）のJSON error本文互換性テストを追加
+  - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
+  - `control-command` / `projection` の主要エラー応答（`400/401/404/502`）で `application/json` + `{"error":"..."}` 形式を共通アサートで固定化
+  - Runtime APIの未知ルート（`404`）とprojection認証エラー（`401`）について、JSON error本文互換性テストを追加
+  - OpenAPIに `components.schemas.ErrorResponse` を追加し、`projection` / `control-command` のエラー応答に `application/json` schemaを明示
+1. フェーズ1作業として、Runtime API契約テストをOpenAPI観点で拡張し、`control-command` / `projection` のエラー本文互換性（JSON errorフォーマット）を固定化する。
+2. `runtime.yaml` の他エンドポイント（`/api/v1/tags/snapshot`, `/api/v1/driver-values`）にもErrorResponse schema適用方針を整理し、実装と契約の整合差分を洗い出す。
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -288,7 +299,7 @@
 
 ## 次に行うこと
 
-1. フェーズ1作業として、Runtime API契約テストをOpenAPI観点で拡張し、`control-command` / `projection` のエラー本文互換性（JSON errorフォーマット）を固定化する。
+1. `runtime.yaml` の他エンドポイント（`/api/v1/tags/snapshot`, `/api/v1/driver-values`）にもErrorResponse schema適用方針を整理し、実装と契約の整合差分を洗い出す。
 
 ## フェーズ0完了条件棚卸し
 
@@ -352,6 +363,8 @@
 - `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）
 - `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 scripts/check_local_ci.sh`: 成功（GitHub Actions手動bind依存ジョブ相当、Runtime UI E2E 12 passed + bind依存検証）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
+- `cargo test -p preview-runtime`: 成功（37 tests、`control-command` / `projection` のJSON error本文互換性アサート追加を含む）
+- `cargo test -p preview-runtime -- --ignored`: 成功（20 tests、境界系bind依存テストの回帰なし）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p preview-runtime`: 成功（Tag Server snapshot不正JSON/空応答の通常テスト確認、bind依存テストはignored）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server snapshot不正JSON/空応答のbind依存境界テストを含む6件）

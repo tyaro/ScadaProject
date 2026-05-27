@@ -1173,8 +1173,31 @@ mod tests {
 
         let response = api.handle(&request);
 
-        assert_eq!(401, response.status_code);
-        assert_eq!(r#"{"error":"unauthorized"}"#, response.body);
+        assert_json_error_response(&response, 401, "unauthorized");
+    }
+
+    #[test]
+    fn runtime_api_requires_token_for_projection_requests() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        )
+        .with_required_token(Some("secret".to_string()));
+        let request = RuntimeHttpRequest::new("POST", "/api/v1/screens/projection", r#"{}"#);
+
+        let response = api.handle(&request);
+
+        assert_json_error_response(&response, 401, "unauthorized");
+    }
+
+    #[test]
+    fn runtime_api_returns_json_error_for_unknown_route() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new("GET", "/api/v1/unknown", ""));
+
+        assert_json_error_response(&response, 404, "not found");
     }
 
     #[test]
@@ -1190,8 +1213,7 @@ mod tests {
 
         let response = api.handle(&request);
 
-        assert_eq!(400, response.status_code);
-        assert!(response.body.contains("command_id must not be empty"));
+        assert_json_error_response(&response, 400, "command_id must not be empty");
     }
 
     #[test]
@@ -1282,8 +1304,7 @@ mod tests {
             valid_control_command_json(),
         ));
 
-        assert_eq!(502, response.status_code);
-        assert!(response.body.contains("tag server forwarding failed"));
+        assert_json_error_response(&response, 502, "tag server forwarding failed");
         assert!(response.body.contains("io error"));
     }
 
@@ -1590,8 +1611,7 @@ mod tests {
             r#"{"screen_path":"#,
         ));
 
-        assert_eq!(400, response.status_code);
-        assert!(response.body.contains("invalid screen projection JSON"));
+        assert_json_error_response(&response, 400, "invalid screen projection JSON");
     }
 
     #[test]
@@ -1610,8 +1630,7 @@ mod tests {
             &format!(r#"{{"screen_path":"{}"}}"#, missing_path.display()),
         ));
 
-        assert_eq!(400, response.status_code);
-        assert!(response.body.contains("screen definition error"));
+        assert_json_error_response(&response, 400, "screen definition error");
     }
 
     #[test]
@@ -1635,8 +1654,7 @@ mod tests {
         ));
         let _ = fs::remove_file(screen_path);
 
-        assert_eq!(502, response.status_code);
-        assert!(response.body.contains("tag server snapshot failed"));
+        assert_json_error_response(&response, 502, "tag server snapshot failed");
         assert!(response.body.contains("io error"));
     }
 
@@ -1818,6 +1836,19 @@ mod tests {
 
     fn valid_control_command_json() -> &'static str {
         r#"{"command_id":"cmd-1","idempotency_key":"key-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#
+    }
+
+    fn assert_json_error_response(response: &RuntimeHttpResponse, expected_status: u16, message: &str) {
+        assert_eq!(expected_status, response.status_code);
+        assert_eq!("application/json", response.content_type);
+
+        let body = serde_json::from_str::<Value>(&response.body).expect("error JSON body");
+        let error = body
+            .get("error")
+            .and_then(Value::as_str)
+            .expect("error message field");
+
+        assert!(error.contains(message));
     }
 
     #[test]
