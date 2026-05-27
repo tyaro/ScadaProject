@@ -154,6 +154,7 @@
   - ControlCommand失敗時にエラー表示へ遷移することを回帰テストへ追加
   - ControlCommand失敗時に非JSONエラー本文でも `command <status>` へフォールバックするよう改善
   - ControlCommand成功時に空本文/非JSON本文でも `command accepted` へフォールバックし、projection再取得へ進むよう改善
+  - ControlCommand後の稼働状態、手動refresh後の温度、MQTT delta後の温度について、上部表示とbinding tableが同じ値へ更新されることを回帰テストへ追加
   - projection取得失敗時にエラー表示とOffline表示へ遷移することを回帰テストへ追加
   - projection取得失敗時にRuntime APIのJSON `error` 本文を表示するよう改善
   - projection取得失敗時に非JSONエラー本文でも `projection <status>` へフォールバックすることを回帰テストへ追加
@@ -263,7 +264,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. GitHub Actions上で初回CI結果を確認し、必要なら依存インストール/権限まわりを調整する。
-3. Runtime UIの温度/稼働状態表示とbinding tableの一貫性を追加シナリオで確認する。
+3. Runtime UIのMQTTエラー経路（不正payload、topic不一致）をE2Eで確認する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -305,6 +306,7 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 12 passed（Projection/Commandエラー種別ラベル検証を含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run check`: 成功（ControlCommand成功応答フォールバック + 表示再計算修正後）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（ControlCommand成功時の空/非JSON応答フォールバックを含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 14 passed（上部表示とbinding tableの値一貫性確認を含む）
 - `scripts/check_local_ci.sh`: 成功（標準チェック、bind依存チェックはskip）
 - `cargo test -p preview-runtime -- --ignored`: 成功（bind依存Runtime API境界テスト4件）
 - `scripts/check_local_ci.sh`: 成功（GitHub Actions workflow追加後の標準チェック）

@@ -342,6 +342,7 @@ test('falls back to accepted when control command success body is empty', async 
 
   await expect(page.getByText('command accepted')).toBeVisible()
   await expect(page.getByText('Running', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Bindings').getByText('true', { exact: true })).toBeVisible()
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
 
@@ -609,6 +610,8 @@ test('updates displayed values after manual refresh', async ({ page }) => {
   await refreshResponse
 
   await expect(page.getByText('24.2 °C')).toBeVisible()
+  await expect(page.getByLabel('Bindings').getByText('24.2', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Bindings').getByText('21.5', { exact: true })).toHaveCount(0)
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
 
@@ -651,6 +654,7 @@ test('updates displayed values after mqtt delta', async ({ page }) => {
   })
 
   await expect(page.getByText('25.3 °C')).toBeVisible()
+  await expect(page.getByLabel('Bindings').getByText('25.3', { exact: true })).toBeVisible()
   await expect(page.getByText('delta mock.temperature.001 seq 7')).toBeVisible()
 })
 
