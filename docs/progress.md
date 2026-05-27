@@ -132,6 +132,11 @@
   - MQTT delta payloadを既存bindingへ反映
   - 現在値より古いsequenceのdeltaは破棄
   - MQTT接続状態、最終delta、delta件数を画面に表示
+- ControlCommand後のMock値フィードバックを追加
+  - Driver ManagerのMock write serverが書き込み成功後にTag Serverへ正規化TagValueを戻す
+  - 周期投入と書き込みフィードバックで同じ `ValueNormalizer` を共有し、sequenceを単調増加
+  - Tag ServerのControlCommand処理と自己待ちしないよう、Driver Manager側の値フィードバックは非同期実行
+  - `Runtime REST API -> Tag Server -> Driver Manager -> Tag Server driver-values -> MQTT delta` を確認
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -212,8 +217,8 @@
 
 ## 次に行うこと
 
-1. Svelte監視画面のStart/Stop操作後にTag Server最新値とMQTT deltaが整合するよう、ControlCommand後の値反映方針を詰める。
-2. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
+1. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
+2. Svelte監視画面の操作確認をブラウザ自動検証へ寄せ、Start/Stop後の表示更新を回帰確認できるようにする。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
 ## フェーズ0完了条件棚卸し
@@ -234,7 +239,7 @@
 - Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
 - Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
 - Runtime起点の書き込みREST APIは `Preview Runtime REST -> Tag Server -> Driver Manager -> Mock Driver` まで確認済み。
-- 画面表示はSvelte監視画面がRuntime APIの `ScreenProjection` JSONを読み、MQTT deltaでbindingを更新するところまで実装済み。ControlCommand後の実値反映方針は次の実装対象。
+- 画面表示はSvelte監視画面がRuntime APIの `ScreenProjection` JSONを読み、MQTT deltaでbindingを更新するところまで実装済み。ControlCommand後もDriver ManagerからTag Serverへ値フィードバックし、MQTT deltaとして反映できる。
 - Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
@@ -324,6 +329,18 @@
   - `scada/demo/tag/#` を購読
   - `scada/demo/tag/mock.temperature.001/value` publishを受信
   - payload `sequence=9`, `quality=Simulated`, `value=23.7` を確認
+- `cargo test -p driver-manager -p tag-server -p preview-runtime -p scada-core`: 成功
+- `cargo build -p driver-manager -p tag-server -p preview-runtime`: 成功
+- `curl POST http://127.0.0.1:18690/api/v1/control-commands`: 成功
+  - 応答 `202 Accepted`
+  - `command.status=DriverAck`
+- `node mqtt client -> ws://127.0.0.1:8083/mqtt`（ControlCommand後の値フィードバック）: 成功
+  - `scada/demo/tag/mock.running.001/value` を購読
+  - Runtime REST APIへのControlCommand後にdelta受信
+  - payload `value=true`, `sequence=3`, `quality=Simulated` を確認
+- `cargo test -p scada-core -p preview-runtime -p tag-server -p driver-manager -p mock-driver -p tauri-shell`: 成功
+- `cd apps/runtime-ui && npm run check`: 成功
+- `cd apps/runtime-ui && npm run build`: 成功
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功

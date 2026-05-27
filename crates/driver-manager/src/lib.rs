@@ -2,13 +2,14 @@ use scada_core::command::{ControlCommand, ControlCommandStatus};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 
 use mock_driver::MockDriver;
 use scada_core::driver::{
     driver_write_request_from_json_str, driver_write_response_to_json,
-    raw_driver_value_from_json_str, DriverWriteResponse, RawDriverValue,
+    raw_driver_value_from_json_str, DriverWriteRequest, DriverWriteResponse, RawDriverValue,
 };
-use scada_core::tag::{tag_value_to_json, TagValue};
+use scada_core::tag::{tag_value_to_json, QualityCode, TagValue, TagValueData};
 
 #[derive(Debug, Clone)]
 pub struct ValueNormalizer {
@@ -71,6 +72,12 @@ pub struct DriverManagerCycleResult {
     pub posted_values: usize,
     pub tag_server_status: u16,
     pub tag_server_body: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MockWriteFeedbackConfig {
+    pub cycle_config: DriverManagerCycleConfig,
+    pub normalizer: Arc<Mutex<ValueNormalizer>>,
 }
 
 pub fn run_mock_driver_cycle(
@@ -168,12 +175,15 @@ pub fn post_tag_values(
     parse_http_response(&response)
 }
 
-pub fn run_mock_write_server(addr: &str) -> std::io::Result<()> {
+pub fn run_mock_write_server(
+    addr: &str,
+    feedback: Option<MockWriteFeedbackConfig>,
+) -> std::io::Result<()> {
     let listener = TcpListener::bind(addr)?;
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => handle_write_stream(&mut stream)?,
+            Ok(mut stream) => handle_write_stream(&mut stream, feedback.as_ref())?,
             Err(error) => return Err(error),
         }
     }
@@ -181,7 +191,10 @@ pub fn run_mock_write_server(addr: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn handle_write_stream(stream: &mut TcpStream) -> std::io::Result<()> {
+fn handle_write_stream(
+    stream: &mut TcpStream,
+    feedback: Option<&MockWriteFeedbackConfig>,
+) -> std::io::Result<()> {
     let request = match read_http_request(stream) {
         Ok(request) => request,
         Err(error) => {
@@ -192,18 +205,7 @@ fn handle_write_stream(stream: &mut TcpStream) -> std::io::Result<()> {
     };
 
     let response = if request.method == "POST" && request.path == "/api/v1/driver-writes" {
-        match driver_write_request_from_json_str(&request.body) {
-            Ok(driver_request) => {
-                let driver = MockDriver::new("mock-driver", "mock-endpoint");
-                let driver_response = driver.write(&driver_request);
-                http_response(
-                    202,
-                    "Accepted",
-                    &driver_write_response_to_json(&driver_response),
-                )
-            }
-            Err(error) => http_response(400, "Bad Request", &json_error(&error)),
-        }
+        handle_driver_write(&request.body, feedback)
     } else if request.method == "GET" && request.path == "/health" {
         http_response(
             200,
@@ -215,6 +217,90 @@ fn handle_write_stream(stream: &mut TcpStream) -> std::io::Result<()> {
     };
 
     stream.write_all(response.as_bytes())
+}
+
+fn handle_driver_write(body: &str, feedback: Option<&MockWriteFeedbackConfig>) -> String {
+    let driver_request = match driver_write_request_from_json_str(body) {
+        Ok(driver_request) => driver_request,
+        Err(error) => return http_response(400, "Bad Request", &json_error(&error)),
+    };
+    let driver = MockDriver::new("mock-driver", "mock-endpoint");
+    let driver_response = driver.write(&driver_request);
+
+    if driver_response.accepted {
+        if let Some(feedback) = feedback {
+            let feedback = feedback.clone();
+            let driver_request = driver_request.clone();
+            std::thread::spawn(move || {
+                match post_write_feedback(&feedback, &driver_request) {
+                Ok((status, body)) if (200..300).contains(&status) => {
+                    let _ = body;
+                }
+                Ok((status, body)) => eprintln!(
+                    "driver-manager mock write feedback failed: tag server returned status {status}: {body}"
+                ),
+                Err(error) => eprintln!("driver-manager mock write feedback failed: {error}"),
+            }
+            });
+        }
+    }
+
+    http_response(
+        202,
+        "Accepted",
+        &driver_write_response_to_json(&driver_response),
+    )
+}
+
+pub fn post_write_feedback(
+    feedback: &MockWriteFeedbackConfig,
+    request: &DriverWriteRequest,
+) -> Result<(u16, String), String> {
+    let raw = raw_value_from_driver_write_request(request)?;
+    let tag_value = {
+        let mut normalizer = feedback
+            .normalizer
+            .lock()
+            .map_err(|_| "normalizer lock poisoned".to_string())?;
+        normalizer.normalize(raw, &feedback.cycle_config.server_timestamp)
+    };
+
+    post_tag_values(&feedback.cycle_config, &[tag_value])
+}
+
+pub fn raw_value_from_driver_write_request(
+    request: &DriverWriteRequest,
+) -> Result<RawDriverValue, String> {
+    Ok(RawDriverValue {
+        tag_id: request.tag_id.clone(),
+        value: parse_driver_write_value(&request.value)?,
+        quality: QualityCode::Simulated,
+        source_timestamp: "1970-01-01T00:00:00Z".to_string(),
+        driver_id: "mock-driver".to_string(),
+        endpoint_id: "mock-endpoint".to_string(),
+    })
+}
+
+fn parse_driver_write_value(value: &str) -> Result<TagValueData, String> {
+    match value {
+        "true" => return Ok(TagValueData::Boolean(true)),
+        "false" => return Ok(TagValueData::Boolean(false)),
+        _ => {}
+    }
+
+    if let Ok(integer) = value.parse::<i64>() {
+        return Ok(TagValueData::Integer(integer));
+    }
+    if let Ok(float) = value.parse::<f64>() {
+        return Ok(TagValueData::Float(float));
+    }
+    if value.starts_with('"') && value.ends_with('"') {
+        let parsed: String = serde_json::from_str(value)
+            .map_err(|error| format!("invalid string write value: {error}"))?;
+        return Ok(TagValueData::String(parsed));
+    }
+
+    Ok(TagValueData::String(value.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -448,5 +534,53 @@ mod tests {
 
         assert_eq!("POST", request.method);
         assert_eq!("/api/v1/driver-writes", request.path);
+    }
+
+    #[test]
+    fn write_request_can_be_converted_to_raw_driver_value() {
+        let raw = raw_value_from_driver_write_request(&DriverWriteRequest {
+            command_id: "cmd-1".to_string(),
+            tag_id: "mock.running.001".to_string(),
+            value: "true".to_string(),
+        })
+        .expect("raw value");
+
+        assert_eq!("mock.running.001", raw.tag_id);
+        assert_eq!(TagValueData::Boolean(true), raw.value);
+        assert_eq!(QualityCode::Simulated, raw.quality);
+    }
+
+    #[test]
+    fn shared_normalizer_sequences_write_feedback_after_cycle_value() {
+        let normalizer = Arc::new(Mutex::new(ValueNormalizer::new(1000, 3000)));
+        {
+            let mut guard = normalizer.lock().expect("normalizer");
+            let first = guard.normalize(
+                RawDriverValue {
+                    tag_id: "mock.temperature.001".to_string(),
+                    value: TagValueData::Float(21.0),
+                    quality: QualityCode::Simulated,
+                    source_timestamp: "1970-01-01T00:00:00Z".to_string(),
+                    driver_id: "mock-driver".to_string(),
+                    endpoint_id: "mock-endpoint".to_string(),
+                },
+                "1970-01-01T00:00:01Z",
+            );
+            assert_eq!(1, first.sequence);
+        }
+
+        let raw = raw_value_from_driver_write_request(&DriverWriteRequest {
+            command_id: "cmd-2".to_string(),
+            tag_id: "mock.running.001".to_string(),
+            value: "false".to_string(),
+        })
+        .expect("raw value");
+        let second = normalizer
+            .lock()
+            .expect("normalizer")
+            .normalize(raw, "1970-01-01T00:00:02Z");
+
+        assert_eq!(2, second.sequence);
+        assert_eq!(TagValueData::Boolean(false), second.value);
     }
 }

@@ -1,8 +1,9 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use driver_manager::{
     run_mock_driver_cycle, run_mock_driver_cycle_with_normalizer, run_mock_write_server,
-    DriverManagerCycleConfig, ValueNormalizer,
+    DriverManagerCycleConfig, MockWriteFeedbackConfig, ValueNormalizer,
 };
 use scada_core::service::{print_health, ServiceRole};
 
@@ -37,10 +38,18 @@ fn main() {
     }
     if args.iter().any(|arg| arg == "--run-mock-loop") {
         let config = mock_cycle_config(&args);
+        let normalizer = Arc::new(Mutex::new(ValueNormalizer::new(
+            config.scan_interval_ms,
+            config.stale_after_ms,
+        )));
         if let Some(write_addr) = arg_value(&args, "--write-addr") {
+            let feedback = MockWriteFeedbackConfig {
+                cycle_config: config.clone(),
+                normalizer: normalizer.clone(),
+            };
             std::thread::spawn(move || {
                 eprintln!("driver-manager mock write server listening on {write_addr}");
-                if let Err(error) = run_mock_write_server(&write_addr) {
+                if let Err(error) = run_mock_write_server(&write_addr, Some(feedback)) {
                     eprintln!("driver-manager mock write server failed: {error}");
                 }
             });
@@ -54,7 +63,6 @@ fn main() {
         let interval_ms = arg_value(&args, "--interval-ms")
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(config.scan_interval_ms);
-        let mut normalizer = ValueNormalizer::new(config.scan_interval_ms, config.stale_after_ms);
         let mut cycle = 0u64;
 
         if startup_delay_ms > 0 {
@@ -63,7 +71,17 @@ fn main() {
 
         loop {
             cycle = cycle.saturating_add(1);
-            match run_mock_driver_cycle_with_normalizer(&config, &mut normalizer) {
+            let result = {
+                let mut normalizer = match normalizer.lock() {
+                    Ok(normalizer) => normalizer,
+                    Err(_) => {
+                        eprintln!("driver-manager mock-loop failed: normalizer lock poisoned");
+                        std::process::exit(1);
+                    }
+                };
+                run_mock_driver_cycle_with_normalizer(&config, &mut normalizer)
+            };
+            match result {
                 Ok(result) => {
                     println!(
                         "driver-manager mock-loop cycle={} raw_values={} posted_values={} tag_server_status={} tag_server_body={}",
