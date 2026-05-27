@@ -32,7 +32,8 @@ body {
 }
 
 button,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
@@ -172,6 +173,23 @@ textarea {
   line-height: 1.5;
 }
 
+input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #fffdfa;
+  color: var(--ink);
+}
+
+input:focus,
+textarea:focus,
+button:focus {
+  outline: 2px solid rgba(181, 84, 47, 0.55);
+  outline-offset: 2px;
+}
+
 .actions {
   display: flex;
   gap: 12px;
@@ -260,6 +278,43 @@ textarea {
   border-left: 3px solid var(--line);
   padding-left: 10px;
   color: var(--muted);
+}
+
+.editor-stub {
+  margin-top: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(255, 249, 241, 0.75);
+}
+
+.editor-stub-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.editor-stub-header p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field + .field {
+  margin-top: 12px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 @media (max-width: 880px) {

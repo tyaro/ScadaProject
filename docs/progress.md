@@ -234,6 +234,8 @@ Runtime API境界テストを強化
   - Builder APIに `POST /api/v1/errors/map` を追加し、Builder UIがHTTP経由で同じ構造化エラーマッピングを利用できるようにした
   - `apps/builder-ui` にSvelteベースの最小Builder UIを追加し、`POST /api/v1/errors/map` を呼び出して `known_code` / `user_message` / `path` を表示できるようにした
   - `apps/builder-ui` の Playwright 回帰テストで、既知コード時の定型表示と未知コード時のフォールバック表示を固定化した
+  - `apps/builder-ui` で `path=object=... property=...` を機械解釈し、最小編集スタブの該当入力へ自動フォーカスする導線を追加した
+  - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
   - `cargo test -p preview-runtime` / `cargo test -p preview-runtime -- --ignored` で回帰なしを確認
 - Preview RuntimeのMQTT再接続バックオフ改善
@@ -341,8 +343,8 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. Builder UI の次段階として、`path` を機械解釈して該当 object/property 編集フィールドへフォーカスを戻す最小導線を追加する。
-2. Builder API のHTTP契約を OpenAPI として独立定義し、Builder UI との通信面を Runtime API と同様に契約管理できるようにする。
+1. Builder UI の編集スタブを実際のタグ/画面編集フォームへ置き換え、`path` 解釈結果を該当セクション選択と入力フォーカスへ接続する。
+2. Builder API の OpenAPI 契約に沿った境界テストまたは契約整合チェックを追加し、実装と `contracts/openapi/builder.yaml` の乖離を検出できるようにする。
 
 ## フェーズ0完了条件棚卸し
 
@@ -372,6 +374,7 @@ Runtime API境界テストを強化
 - `nvm use 24 && node --version`: `v24.16.0`
 - `cd apps/builder-ui && npm run check`: 成功
 - `cd apps/builder-ui && npm run test:e2e`: 成功（2 passed）
+- `ruby -e "require 'yaml'; YAML.load_file('contracts/openapi/builder.yaml')"`: 成功
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
 - `GH_PAGER=cat gh run view 26506251734 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`rust-toolchain.toml` の channel が `stable-aarch64-apple-darwin`）
 - `git push origin master`（`ci: use platform-agnostic rust toolchain channel` 反映後）: 成功

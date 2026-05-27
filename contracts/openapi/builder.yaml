@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: SCADA Builder API
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Builder API health check
+      responses:
+        "200":
+          $ref: "#/components/responses/HealthOk"
+  /api/v1/errors/map:
+    post:
+      summary: Map coded validation errors for Builder UI display
+      description: Accepts a raw `code/path/detail` error string and returns structured fields plus a user-facing message for Builder UI.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorMapRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/ErrorMapOk"
+        "400":
+          $ref: "#/components/responses/BadRequestError"
+
+components:
+  responses:
+    HealthOk:
+      description: Builder API is healthy
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/HealthResponse"
+    ErrorMapOk:
+      description: Structured error mapping for Builder UI
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorMapResponse"
+    BadRequestError:
+      description: Invalid request body or unsupported JSON shape
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        service:
+          type: string
+          example: builder-api
+        status:
+          type: string
+          example: healthy
+      required:
+        - service
+        - status
+    ErrorMapRequest:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Raw error text formatted as `code=... path=... detail=...`.
+          example: "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
+      required:
+        - error
+    ErrorMapResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          nullable: true
+          example: MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX
+        path:
+          type: string
+          nullable: true
+          description: Machine-readable location for Builder UI focus routing.
+          example: "object=pump-001 property=color"
+        detail:
+          type: string
+          nullable: true
+          example: "op 'between' requires min and max"
+        user_message:
+          type: string
+          example: "invalid modify rule condition at object=pump-001 property=color: between requires min and max"
+        known_code:
+          type: boolean
+          description: False when the Builder API falls back to the raw input message.
+          example: true
+      required:
+        - code
+        - path
+        - detail
+        - user_message
+        - known_code
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "invalid error map JSON: missing field `error` at line 1 column 2"
+      required:
+        - error

@@ -481,8 +481,11 @@ Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_co
 - `user_message`
 - `known_code`
 - `path`
+- `path` の解析結果に応じた該当編集入力へのフォーカス
 
 この最小画面は、Builder本体のタグ/画面エディタ着手前に、エラー契約と表示フォールバックを固定するための検証面とする。
+
+初期段階では実エディタの代わりに最小編集スタブを置き、`path` から抽出した `object` / `property` を対応入力へ反映し、より具体的な `property` がある場合はその入力へフォーカスする。
 
 #### Builder API エラーマッピングHTTPエンドポイント
 
@@ -496,6 +499,8 @@ Builder UI から直接利用できる最小連携点として、Builder API は
 このエンドポイントは Builder UI 実装初期のエラー表示統一に使い、将来UI内へ同等ロジックを内包しても契約は維持する。
 
 ローカル同梱サービスでは、Builder API を `--serve --addr 127.0.0.1:18110` で常駐起動し、Builder UI から直接このエンドポイントを利用できるようにする。
+
+Builder API のHTTP契約は [contracts/openapi/builder.yaml](contracts/openapi/builder.yaml) を正本とし、`/health` と `POST /api/v1/errors/map` の request/response はこの OpenAPI に従って管理する。
 
 ### OpenAPI共通コンポーネント運用ルール
 

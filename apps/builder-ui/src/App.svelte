@@ -1,10 +1,18 @@
 <script lang="ts">
+  import { tick } from 'svelte'
+
   type ErrorMappingResponse = {
     code: string | null
     path: string | null
     detail: string | null
     user_message: string
     known_code: boolean
+  }
+
+  type ParsedTargetPath = {
+    objectId: string | null
+    property: string | null
+    valid: boolean
   }
 
   const sampleKnownError =
@@ -16,6 +24,42 @@
   let loading = false
   let apiError = ''
   let response: ErrorMappingResponse | null = null
+  let parsedTarget: ParsedTargetPath = { objectId: null, property: null, valid: false }
+  let focusStatus = 'No parsed target yet'
+  let objectField: HTMLInputElement | null = null
+  let propertyField: HTMLInputElement | null = null
+
+  function parseTargetPath(path: string | null): ParsedTargetPath {
+    if (!path) {
+      return { objectId: null, property: null, valid: false }
+    }
+
+    const objectId = path.match(/(?:^|\s)object=([^\s]+)/)?.[1] ?? null
+    const property = path.match(/(?:^|\s)property=([^\s]+)/)?.[1] ?? null
+
+    return {
+      objectId,
+      property,
+      valid: objectId !== null || property !== null,
+    }
+  }
+
+  async function focusParsedTarget(path: string | null) {
+    parsedTarget = parseTargetPath(path)
+
+    if (!parsedTarget.valid) {
+      focusStatus = 'Path could not be parsed into object/property tokens'
+      return
+    }
+
+    await tick()
+
+    const targetField = parsedTarget.property ? propertyField : objectField
+    targetField?.focus()
+    focusStatus = parsedTarget.property
+      ? `Focused property editor for ${parsedTarget.property}`
+      : `Focused object editor for ${parsedTarget.objectId}`
+  }
 
   async function mapError() {
     loading = true
@@ -34,8 +78,11 @@
       }
 
       response = (await httpResponse.json()) as ErrorMappingResponse
+      await focusParsedTarget(response.path)
     } catch (error) {
       response = null
+      parsedTarget = { objectId: null, property: null, valid: false }
+      focusStatus = 'No parsed target yet'
       apiError = error instanceof Error ? error.message : 'builder api unavailable'
     } finally {
       loading = false
@@ -119,6 +166,7 @@
       <ul class="hint-list">
         <li>`known_code=true` のときはテンプレート文言を表示します。</li>
         <li>未知コードは `user_message` に生エラーを残し、UIが最低限の原因を表示できます。</li>
+        <li>`path` が `object` / `property` を含むときは、右側の編集スタブで該当入力へフォーカスします。</li>
       </ul>
     </section>
 
@@ -147,6 +195,10 @@
             <span>Path</span>
             <code>{response.path ?? '-'}</code>
           </div>
+          <div class="result-row" data-testid="focus-status-row">
+            <span>Editor focus</span>
+            <code>{focusStatus}</code>
+          </div>
           <div class="result-row">
             <span>Detail</span>
             <code>{response.detail ?? '-'}</code>
@@ -163,6 +215,40 @@
           <code>Call the endpoint to preview Builder UI error rendering.</code>
         </div>
       {/if}
+
+      <div class="editor-stub" data-testid="editor-stub">
+        <div class="editor-stub-header">
+          <div>
+            <h3>Editor Stub</h3>
+            <p>`path` の機械解釈を確認するための最小編集面</p>
+          </div>
+          <span class:good={parsedTarget.valid} class="chip">
+            {parsedTarget.valid ? 'Parsed target' : 'No target'}
+          </span>
+        </div>
+
+        <label class="field">
+          <span>Object ID</span>
+          <input
+            bind:this={objectField}
+            data-testid="object-field"
+            type="text"
+            readonly
+            value={parsedTarget.objectId ?? ''}
+          />
+        </label>
+
+        <label class="field">
+          <span>Property</span>
+          <input
+            bind:this={propertyField}
+            data-testid="property-field"
+            type="text"
+            readonly
+            value={parsedTarget.property ?? ''}
+          />
+        </label>
+      </div>
     </section>
   </section>
 </main>

@@ -26,6 +26,10 @@ test('maps known coded condition error and shows structured response', async ({ 
   )
   await expect(page.getByTestId('known-code-badge')).toHaveText('Known code')
   await expect(page.getByTestId('path-row')).toContainText('object=pump-001 property=color')
+  await expect(page.getByTestId('focus-status-row')).toContainText('Focused property editor for color')
+  await expect(page.getByTestId('object-field')).toHaveValue('pump-001')
+  await expect(page.getByTestId('property-field')).toHaveValue('color')
+  await expect(page.getByTestId('property-field')).toBeFocused()
 })
 
 test('keeps fallback behavior for unknown codes', async ({ page }) => {
@@ -52,4 +56,7 @@ test('keeps fallback behavior for unknown codes', async ({ page }) => {
   await expect(page.getByTestId('user-message-row')).toContainText(
     'code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state'
   )
+  await expect(page.getByTestId('focus-status-row')).toContainText('Focused property editor for text')
+  await expect(page.getByTestId('object-field')).toHaveValue('valve-002')
+  await expect(page.getByTestId('property-field')).toHaveValue('text')
 })
