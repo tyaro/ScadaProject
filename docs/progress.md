@@ -147,6 +147,10 @@
   - `projection` でRuntime APIのBearer認証を受け付け、Tag Server snapshot要求へ `Authorization` を転送する境界テストを追加
   - `projection` でTag Server接続拒否時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
   - `projection` でTag Server応答遅延（read timeout）時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `projection` でTag Server応答のHTTPヘッダ終端欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `projection` でTag Server応答のステータス行欠落時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `projection` でTag Server応答のHTTPバージョン不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
+  - `projection` でTag Server応答のステータスコード不正時にRuntime APIが `502 Bad Gateway` を返す境界テストを追加
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -278,7 +282,7 @@
 
 ## 次に行うこと
 
-1. フェーズ1作業として、Preview RuntimeのHTTP境界テストをさらに拡張し、Tag Serverの不正HTTPレスポンス（ヘッダ不正/ステータス行不正）時の `502` 変換を検証する。
+1. フェーズ1作業として、Preview RuntimeのControlCommand経路でもTag Serverの接続拒否/応答遅延時に `502` へ正規化されることを境界テストで検証する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -316,6 +320,8 @@
 - `gh api repos/tyaro/ScadaProject/actions/runs/26507039793`: 成功（`conclusion: success`、`ci: opt in GitHub Actions to Node 24 runtime`）
 - `cargo test -p preview-runtime`: 成功（`projection` のTag Server接続拒否時 `502` 境界テストを含む）
 - `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server応答遅延時 `502` 境界テストを含む）
+- `cargo test -p preview-runtime`: 成功（Tag Server不正HTTPレスポンス時 `502` 境界テストを含む）
+- `cargo test -p preview-runtime -- --ignored`: 成功（Tag Server不正HTTPレスポンス4ケースを含む15件）
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）

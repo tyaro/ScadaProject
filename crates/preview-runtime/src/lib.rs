@@ -1653,8 +1653,90 @@ mod tests {
         response
     }
 
+    fn runtime_api_handle_projection_with_raw_snapshot_response(raw_response: &str) -> RuntimeHttpResponse {
+        let screen_path = write_test_screen_definition("snapshot-raw-http-response");
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener");
+        let addr = listener.local_addr().expect("addr");
+        let raw = raw_response.to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let request = read_runtime_http_request(&mut stream).expect("request");
+            assert_eq!("POST", request.method);
+            assert_eq!("/api/v1/tags/snapshot", request.path);
+            stream.write_all(raw.as_bytes()).expect("write raw response");
+        });
+
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url(&format!("http://{addr}"))
+                .expect("client")
+                .with_timeout(std::time::Duration::from_millis(200)),
+        )
+        .with_default_screen_path(screen_path.clone());
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{}"#,
+        ));
+        server.join().expect("server");
+        let _ = fs::remove_file(screen_path);
+        response
+    }
+
     fn valid_control_command_json() -> &'static str {
         r#"{"command_id":"cmd-1","idempotency_key":"key-1","user_id":"operator","tag_id":"mock.running.001","requested_value":true,"status":"Requested","requested_at":"1970-01-01T00:00:05Z","timeout_ms":1000}"#
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_snapshot_http_header_terminator_is_missing() {
+        let response = runtime_api_handle_projection_with_raw_snapshot_response(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("missing response header terminator"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_snapshot_http_status_line_is_missing() {
+        let response = runtime_api_handle_projection_with_raw_snapshot_response(
+            "\r\n\r\n{\"values\":[],\"missing_tag_ids\":[]}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("missing status line"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_snapshot_http_version_is_invalid() {
+        let response = runtime_api_handle_projection_with_raw_snapshot_response(
+            "HTTX/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"values\":[],\"missing_tag_ids\":[]}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("invalid http version"));
+    }
+
+    #[test]
+    #[ignore = "requires local TCP listener"]
+    fn runtime_api_returns_bad_gateway_when_snapshot_http_status_code_is_invalid() {
+        let response = runtime_api_handle_projection_with_raw_snapshot_response(
+            "HTTP/1.1 xyz OOPS\r\nContent-Type: application/json\r\n\r\n{\"values\":[],\"missing_tag_ids\":[]}",
+        );
+
+        assert_eq!(502, response.status_code);
+        assert!(response.body.contains("tag server snapshot failed"));
+        assert!(response.body.contains("http error"));
+        assert!(response.body.contains("invalid status code"));
     }
 
     #[test]
