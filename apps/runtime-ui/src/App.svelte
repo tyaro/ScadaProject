@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
+  import mqtt, { type MqttClient } from 'mqtt'
 
   type BindingState = {
     key: string
@@ -32,14 +33,32 @@
     error?: string
   }
 
+  type RuntimeTagValue = {
+    tag_id: string
+    value: unknown
+    quality: string
+    sequence: number
+  }
+
   let projection: ScreenProjection | null = null
   let loading = true
   let errorMessage = ''
   let commandMessage = ''
   let lastUpdated = ''
+  let mqttState = 'disconnected'
+  let mqttMessage = ''
+  let deltaCount = 0
+  let mqttClient: MqttClient | null = null
+  let mqttProjectId = ''
+
+  const mqttUrl = import.meta.env.VITE_MQTT_URL ?? 'ws://127.0.0.1:8083/mqtt'
 
   onMount(() => {
     void loadProjection()
+  })
+
+  onDestroy(() => {
+    mqttClient?.end(true)
   })
 
   async function loadProjection() {
@@ -59,6 +78,7 @@
 
       projection = (await response.json()) as ScreenProjection
       lastUpdated = new Date().toLocaleTimeString()
+      connectMqtt(projection.project_id)
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'projection unavailable'
     } finally {
@@ -96,6 +116,94 @@
       await loadProjection()
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'command failed'
+    }
+  }
+
+  function connectMqtt(projectId: string) {
+    if (mqttClient && mqttProjectId === projectId) return
+
+    mqttClient?.end(true)
+    mqttProjectId = projectId
+    mqttState = 'connecting'
+    mqttMessage = `connecting ${mqttUrl}`
+
+    const client = mqtt.connect(mqttUrl, {
+      clientId: `runtime-ui-${Math.random().toString(16).slice(2)}`,
+      reconnectPeriod: 1500,
+      connectTimeout: 5000,
+      clean: true,
+    })
+    mqttClient = client
+
+    client.on('connect', () => {
+      mqttState = 'connected'
+      mqttMessage = `subscribed scada/${projectId}/tag/+/value`
+      client.subscribe(`scada/${projectId}/tag/+/value`, { qos: 0 }, (error) => {
+        if (error) {
+          mqttState = 'error'
+          mqttMessage = error.message
+        }
+      })
+    })
+
+    client.on('reconnect', () => {
+      mqttState = 'reconnecting'
+      mqttMessage = `reconnecting ${mqttUrl}`
+    })
+
+    client.on('offline', () => {
+      mqttState = 'offline'
+      mqttMessage = 'mqtt offline'
+    })
+
+    client.on('error', (error) => {
+      mqttState = 'error'
+      mqttMessage = error.message
+    })
+
+    client.on('message', (topic, payload) => {
+      applyMqttDelta(projectId, topic, payload.toString())
+    })
+  }
+
+  function applyMqttDelta(projectId: string, topic: string, payload: string) {
+    if (!projection) return
+
+    let delta: RuntimeTagValue
+    try {
+      delta = JSON.parse(payload) as RuntimeTagValue
+    } catch (error) {
+      mqttState = 'error'
+      mqttMessage = error instanceof Error ? error.message : 'invalid mqtt payload'
+      return
+    }
+
+    const expectedTopic = `scada/${projectId}/tag/${delta.tag_id}/value`
+    if (topic !== expectedTopic || typeof delta.sequence !== 'number') return
+
+    let applied = false
+    projection = {
+      ...projection,
+      object_states: projection.object_states.map((object) => ({
+        ...object,
+        bindings: object.bindings.map((binding) => {
+          if (binding.tag_id !== delta.tag_id) return binding
+          if (binding.sequence !== null && delta.sequence <= binding.sequence) return binding
+          applied = true
+          return {
+            ...binding,
+            value: delta.value,
+            quality: delta.quality,
+            sequence: delta.sequence,
+          }
+        }),
+      })),
+    }
+
+    if (applied) {
+      deltaCount += 1
+      lastUpdated = new Date().toLocaleTimeString()
+      mqttMessage = `delta ${delta.tag_id} seq ${delta.sequence}`
     }
   }
 
@@ -138,6 +246,9 @@
       <span class:online={!errorMessage} class="status-pill">
         {errorMessage ? 'Offline' : 'Online'}
       </span>
+      <span class:online={mqttState === 'connected'} class="status-pill">
+        MQTT {mqttState}
+      </span>
       <button class="icon-button" type="button" aria-label="Refresh projection" on:click={loadProjection}>
         ↻
       </button>
@@ -164,6 +275,10 @@
     <div>
       <span>Alerts</span>
       <strong>{staleCount}</strong>
+    </div>
+    <div>
+      <span>Deltas</span>
+      <strong>{deltaCount}</strong>
     </div>
   </section>
 
@@ -197,6 +312,7 @@
         </button>
       </div>
       <p class="command-state">{commandMessage || `Updated ${lastUpdated || '-'}`}</p>
+      <p class="command-state">{mqttMessage || 'MQTT waiting'}</p>
     </aside>
   </section>
 

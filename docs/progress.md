@@ -125,6 +125,13 @@
   - `POST /api/v1/control-commands` で `mock.running.001` のStart/Stopを書き込み
   - Vite dev serverの `/api/*` proxyでPreview Runtime `127.0.0.1:18090` へ接続
   - `npm run check` / `npm run build` とVite proxy越しprojection取得を確認
+- Svelte監視画面のMQTT delta反映を追加
+  - `mqtt` クライアントを追加
+  - 画面projection取得後に `ws://127.0.0.1:8083/mqtt` へ接続
+  - `scada/{project_id}/tag/+/value` を購読
+  - MQTT delta payloadを既存bindingへ反映
+  - 現在値より古いsequenceのdeltaは破棄
+  - MQTT接続状態、最終delta、delta件数を画面に表示
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -205,7 +212,7 @@
 
 ## 次に行うこと
 
-1. Svelte監視画面でMQTT deltaを受けて表示を更新する経路を追加する。
+1. Svelte監視画面のStart/Stop操作後にTag Server最新値とMQTT deltaが整合するよう、ControlCommand後の値反映方針を詰める。
 2. Runtime APIのHTTP境界に対する小さな縦断テストを増やし、`REST snapshot + MQTT delta` とControlCommand受付の両方を同じ常駐プロセスで確認する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
@@ -227,7 +234,7 @@
 - Mock値流れは `Mock Driver -> Driver Manager -> Tag Server -> MQTT -> Preview Runtime` まで確認済み。
 - Mock書き込み流れは `Tag Server REST -> Driver Manager -> Mock Driver` まで確認済み。
 - Runtime起点の書き込みREST APIは `Preview Runtime REST -> Tag Server -> Driver Manager -> Mock Driver` まで確認済み。
-- 画面表示はSvelte監視画面がRuntime APIの `ScreenProjection` JSONを読むところまで実装済み。MQTT deltaのブラウザ反映は次の実装対象。
+- 画面表示はSvelte監視画面がRuntime APIの `ScreenProjection` JSONを読み、MQTT deltaでbindingを更新するところまで実装済み。ControlCommand後の実値反映方針は次の実装対象。
 - Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
@@ -309,6 +316,14 @@
   - Vite proxy経由でPreview Runtimeへ到達
   - 応答 `200 OK`
   - `screen_id=mock-main`
+- `cd apps/runtime-ui && npm install mqtt`: 成功
+- `cd apps/runtime-ui && npm run check`（MQTT delta反映追加後）: 成功
+- `cd apps/runtime-ui && npm run build`（MQTT delta反映追加後）: 成功
+- `rumqttd -c config/rumqttd.toml -q`: 起動成功
+- `node mqtt client -> ws://127.0.0.1:8083/mqtt`: 成功
+  - `scada/demo/tag/#` を購読
+  - `scada/demo/tag/mock.temperature.001/value` publishを受信
+  - payload `sequence=9`, `quality=Simulated`, `value=23.7` を確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config config/tauri-shell.services.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
   - 終了した `builder-api` / `tag-server` / `driver-manager` / `preview-runtime` / `mock-driver` の再spawnを確認
 - `target/debug/tauri-shell --supervise-loop --bin-dir target/debug --service-config /private/tmp/tauri-shell.restart-policy.json --supervise-interval-ms 200 --supervise-cycles 3 --restart-exited`: 成功
