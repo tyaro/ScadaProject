@@ -263,6 +263,8 @@ Runtime API境界テストを強化
   - `apps/builder-ui` の E2E を7ケースへ拡張し、Tauri invoke モック経由で Save As パス更新が反映される回帰を固定化した
   - `crates/tauri-shell` に `normalize_relative_screen_path` / `is_valid_screen_relative_path` を追加し、`config/screens/*.screen.json` 制約と project root 外パス拒否を共通ロジックとして固定化した
   - Tauri command の返却契約として再利用する `PickScreenRelativePathResult` 型を `tauri-shell` へ追加し、command実装前にテスト可能な境界を先に用意した
+  - `tauri-shell` CLI に `--pick-screen-relative-path` を追加し、`--project-root` と `--absolute-path`（または `--cancel`）から `PickScreenRelativePathResult` JSON を返す command 互換経路を実装した
+  - src-tauri 未作成の現段階でも、Builder UI が期待する `pick_screen_relative_path` 契約を CLI 経由で検証できる状態にした
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -372,7 +374,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `docs/scada_basic_design.md` の横断I/F定義に沿って、Tauriアプリ本体側 command 実装（ダイアログ選択、`relative_path` 正規化、キャンセル応答）を追加し、Builder UI の invoke ブリッジと `tauri-shell` の共通正規化ロジックを実配線する。
+1. `docs/scada_basic_design.md` の横断I/F定義に沿って、src-tauri 生成後に `pick_screen_relative_path` command を実装し、内部で `tauri-shell` の共通正規化ロジックを呼ぶ配線へ置き換える。
 2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
 
 ## フェーズ0完了条件棚卸し
@@ -412,6 +414,9 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run check`: 成功（Tauri invoke ブリッジ追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（7 passed, Tauri picker モック回帰を含む）
 - `cargo test -p tauri-shell`: 成功（21 passed, path正規化ロジック追加後）
+- `cargo test -p tauri-shell`: 成功（24 passed, `--pick-screen-relative-path` 追加後）
+- `cargo run -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --absolute-path /tmp/scada-project/config/screens/mock-main.screen.json`: 成功（`{"cancelled":false,"relative_path":"config/screens/mock-main.screen.json"}`）
+- `cargo run -p tauri-shell -- --pick-screen-relative-path --project-root /tmp/scada-project --cancel`: 成功（`{"cancelled":true,"relative_path":null}`）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）

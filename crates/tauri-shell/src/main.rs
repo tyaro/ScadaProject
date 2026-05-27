@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use scada_core::mqtt::MqttBrokerEndpoint;
@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tauri_shell::{
     check_default_services, create_local_runtime_config, default_service_bin_dir, mask_token,
-    service_start_plan, spawn_service, supervise_once, ServiceStartPlan,
+    normalize_relative_screen_path, service_start_plan, spawn_service, supervise_once,
+    PickScreenRelativePathResult, ServiceStartPlan,
 };
 
 const SERVICE_CONFIG_SCHEMA_VERSION: &str = "1.0.0";
@@ -67,6 +68,23 @@ fn main() {
     if args.iter().any(|arg| arg == "--print-startup-token") {
         let config = create_local_runtime_config("127.0.0.1");
         println!("{}", config.startup_token);
+        return;
+    }
+    if args.iter().any(|arg| arg == "--pick-screen-relative-path") {
+        let result = match pick_screen_relative_path_response(&args) {
+            Ok(Some(result)) => result,
+            Ok(None) => {
+                eprintln!("tauri-shell pick-screen-relative-path failed: command not enabled");
+                std::process::exit(1);
+            }
+            Err(error) => {
+                eprintln!("tauri-shell pick-screen-relative-path failed: {error}");
+                std::process::exit(1);
+            }
+        };
+
+        let json = serde_json::to_string(&result).expect("serialize pick path result");
+        println!("{json}");
         return;
     }
     if args.iter().any(|arg| arg == "--print-service-plan") {
@@ -197,6 +215,7 @@ core:
   --list-services
   --check-services [--bin-dir <path>]
   --print-startup-token
+    --pick-screen-relative-path --project-root <absolute-path> [--absolute-path <absolute-path>] [--cancel]
   --print-service-plan [--bin-dir <path>] [--bind-host <host>] [--service-config <path>] [--include-rumqttd] [--rumqttd-config <path>] [--rumqttd-bin <path>]
   --supervise-once [--bin-dir <path>] [--bind-host <host>] [--service-config <path>] [--include-rumqttd] [--rumqttd-config <path>] [--rumqttd-bin <path>]
 
@@ -220,6 +239,26 @@ service-config:
 "#,
         SERVICE_CONFIG_SCHEMA_VERSION
     )
+}
+
+fn pick_screen_relative_path_response(
+    args: &[String],
+) -> Result<Option<PickScreenRelativePathResult>, String> {
+    if !args.iter().any(|arg| arg == "--pick-screen-relative-path") {
+        return Ok(None);
+    }
+
+    if args.iter().any(|arg| arg == "--cancel") {
+        return Ok(Some(PickScreenRelativePathResult::cancelled()));
+    }
+
+    let project_root = arg_value(args, "--project-root")
+        .ok_or_else(|| "--project-root is required".to_string())?;
+    let absolute_path = arg_value(args, "--absolute-path")
+        .ok_or_else(|| "--absolute-path is required unless --cancel is set".to_string())?;
+
+    let normalized = normalize_relative_screen_path(Path::new(&project_root), Path::new(&absolute_path))?;
+    Ok(Some(PickScreenRelativePathResult::selected(normalized)))
 }
 
 fn bin_dir_arg(args: &[String]) -> Option<PathBuf> {
@@ -876,6 +915,60 @@ mod tests {
                 config_path.display()
             );
         }
+    }
+
+    #[test]
+    fn pick_screen_relative_path_returns_selected_value() {
+        let args = vec![
+            "tauri-shell".to_string(),
+            "--pick-screen-relative-path".to_string(),
+            "--project-root".to_string(),
+            "/tmp/scada-project".to_string(),
+            "--absolute-path".to_string(),
+            "/tmp/scada-project/config/screens/mock-main.screen.json".to_string(),
+        ];
+
+        let result = pick_screen_relative_path_response(&args)
+            .expect("parse args")
+            .expect("must return result");
+
+        assert!(!result.cancelled);
+        assert_eq!(
+            Some("config/screens/mock-main.screen.json".to_string()),
+            result.relative_path
+        );
+    }
+
+    #[test]
+    fn pick_screen_relative_path_can_return_cancelled() {
+        let args = vec![
+            "tauri-shell".to_string(),
+            "--pick-screen-relative-path".to_string(),
+            "--project-root".to_string(),
+            "/tmp/scada-project".to_string(),
+            "--cancel".to_string(),
+        ];
+
+        let result = pick_screen_relative_path_response(&args)
+            .expect("parse args")
+            .expect("must return result");
+
+        assert!(result.cancelled);
+        assert_eq!(None, result.relative_path);
+    }
+
+    #[test]
+    fn pick_screen_relative_path_requires_absolute_path_without_cancel() {
+        let args = vec![
+            "tauri-shell".to_string(),
+            "--pick-screen-relative-path".to_string(),
+            "--project-root".to_string(),
+            "/tmp/scada-project".to_string(),
+        ];
+
+        let error = pick_screen_relative_path_response(&args).expect_err("must fail");
+
+        assert!(error.contains("--absolute-path is required"));
     }
 
     fn workspace_root() -> PathBuf {
