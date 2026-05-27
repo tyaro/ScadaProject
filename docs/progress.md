@@ -141,6 +141,7 @@
   - `projection` と `control-command` を同一Runtime APIインスタンスで連続処理するテストを追加
   - モックTag Server TCPサーバで `POST /api/v1/tags/snapshot` と `POST /api/v1/control-commands` の転送を検証
   - `projection` でTag Server snapshot取得が失敗したときに `502 Bad Gateway` を返す境界テストを追加
+  - `projection` のinvalid JSONと不正 `screen_path` を `400` で返す境界テストを追加
 - Svelte監視画面のブラウザ自動検証を追加
   - `@playwright/test` を導入
   - `playwright.config.ts` を追加し、Viteテストサーバを自動起動
@@ -238,7 +239,7 @@
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 2. `preview-runtime --snapshot-screen --mqtt-subscribe` のログ自動検証スクリプトをCI実行へ組み込む方針（実行条件/権限）を整理する。
-3. Runtime APIのHTTP境界テストで、`/api/v1/screens/projection` の異常入力（invalid JSON, screen_path不正）ケースを拡充する。
+3. Runtime UIのE2Eでprojection取得失敗時の表示状態を回帰テストへ追加する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -270,6 +271,7 @@
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
 - `cargo test -p preview-runtime`: 成功（Runtime API `projection` のsnapshot失敗時 `502` 境界テスト、およびMQTT再接続バックオフ期待値テストを含む）
+- `cargo test -p preview-runtime`: 成功（Runtime API `projection` のinvalid JSON / 不正 `screen_path` 境界テストを含む）
 - `cargo test -p tauri-shell`: 成功（CLIヘルプとservice-config schema_version差分チェックの追加テストを含む）
 - `scripts/check_preview_runtime_mqtt_resync.sh`: 成功（`mqtt-subscribe` 失敗→snapshot再同期→`backoff=1s` ログを検証）
 - `nvm use 24 && npm --version`: `11.13.0`

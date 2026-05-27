@@ -1383,6 +1383,42 @@ mod tests {
     }
 
     #[test]
+    fn runtime_api_rejects_invalid_projection_json() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        );
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            r#"{"screen_path":"#,
+        ));
+
+        assert_eq!(400, response.status_code);
+        assert!(response.body.contains("invalid screen projection JSON"));
+    }
+
+    #[test]
+    fn runtime_api_rejects_missing_projection_screen_path() {
+        let api = RuntimeApi::new(
+            TagServerClient::from_base_url("http://127.0.0.1:18080").expect("client"),
+        );
+        let missing_path = std::env::temp_dir().join(format!(
+            "scada-preview-runtime-missing-screen-{}.json",
+            std::process::id()
+        ));
+
+        let response = api.handle(&RuntimeHttpRequest::new(
+            "POST",
+            "/api/v1/screens/projection",
+            &format!(r#"{{"screen_path":"{}"}}"#, missing_path.display()),
+        ));
+
+        assert_eq!(400, response.status_code);
+        assert!(response.body.contains("screen definition error"));
+    }
+
+    #[test]
     fn summary_formats_values_and_missing_tags() {
         let snapshot = TagSnapshot {
             values: vec![RuntimeTagValue {
