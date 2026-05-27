@@ -276,7 +276,7 @@
 
 ## 次に行うこと
 
-1. GitHub Actions run（`test(tauri-shell): accept mixed restart event codes`）の最終結果を確認し、必要なら失敗ログを反映する。
+1. フェーズ1作業として、Preview RuntimeのHTTP境界テストを追加し、Runtime APIの失敗系（Tag Server応答遅延/接続拒否）を明示的に検証する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -311,6 +311,7 @@
 - `scripts/check_local_ci.sh`: 成功（Node 24チェック追加後）
 - `GH_PAGER=cat gh run view 26506744140 --repo tyaro/ScadaProject --log-failed`: 失敗原因を確認（`supervise_loop_reset` のイベントコード判定が厳密すぎる）
 - `cargo test -p tauri-shell --test supervise_loop_reset`: 成功（イベントコード判定修正後）
+- `gh api repos/tyaro/ScadaProject/actions/runs/26507039793`: 成功（`conclusion: success`、`ci: opt in GitHub Actions to Node 24 runtime`）
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
