@@ -308,6 +308,13 @@ h2 {
   font-weight: 700;
 }
 
+.segmented button:disabled {
+  color: var(--muted);
+  background: var(--panel-strong);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .command-state {
   margin: 14px 0 0;
 }

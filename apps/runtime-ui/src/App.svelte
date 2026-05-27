@@ -247,6 +247,7 @@
     projection?.object_states
       .flatMap((object) => object.bindings)
       .filter((binding) => binding.quality !== 'Simulated').length ?? 0
+  $: controlsDisabled = loading || !projection
 
   function findBinding(tagId: string): BindingState | undefined {
     return projection?.object_states
@@ -283,7 +284,7 @@
   </header>
 
   {#if errorMessage}
-    <section class="notice" aria-live="polite">{errorMessage}</section>
+    <section class="notice" role="alert">{errorMessage}</section>
   {/if}
 
   <section class="summary-grid" aria-label="Runtime summary">
@@ -331,10 +332,10 @@
     <aside class="control-panel">
       <h2>Control</h2>
       <div class="segmented">
-        <button type="button" class:active={isRunning} on:click={() => writeRunning(true)}>
+        <button type="button" class:active={isRunning} disabled={controlsDisabled} on:click={() => writeRunning(true)}>
           Start
         </button>
-        <button type="button" class:active={!isRunning} on:click={() => writeRunning(false)}>
+        <button type="button" class:active={!isRunning} disabled={controlsDisabled} on:click={() => writeRunning(false)}>
           Stop
         </button>
       </div>
