@@ -325,3 +325,45 @@ test('updates displayed values after manual refresh', async ({ page }) => {
   await expect(page.getByText(/24\.2/)).toBeVisible()
   expect(projectionCalls).toBeGreaterThanOrEqual(2)
 })
+
+test('updates displayed values after mqtt delta', async ({ page }) => {
+  await page.route('**/api/v1/screens/projection', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(projectionResponse),
+    })
+  })
+
+  await page.route('**/api/v1/control-commands', async (route) => {
+    await route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        command: { status: 'DriverAck' },
+        driver_response: { accepted: true, message: 'accepted' },
+      }),
+    })
+  })
+
+  await page.goto('/')
+  await expect(page.getByText(/21\.5/)).toBeVisible()
+
+  await page.evaluate(() => {
+    ;(
+      window as Window & {
+        __runtimeUiTestHook__?: {
+          applyDelta: (topic: string, payload: unknown) => void
+        }
+      }
+    ).__runtimeUiTestHook__?.applyDelta('scada/demo/tag/mock.temperature.001/value', {
+      tag_id: 'mock.temperature.001',
+      value: 25.3,
+      quality: 'Simulated',
+      sequence: 7,
+    })
+  })
+
+  await expect(page.getByText(/25\.3/)).toBeVisible()
+  await expect(page.getByText('delta mock.temperature.001 seq 7')).toBeVisible()
+})

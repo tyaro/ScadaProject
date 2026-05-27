@@ -40,6 +40,10 @@
     sequence: number
   }
 
+  type RuntimeUiTestHook = {
+    applyDelta: (topic: string, payload: RuntimeTagValue) => void
+  }
+
   let projection: ScreenProjection | null = null
   let loading = true
   let errorMessage = ''
@@ -54,11 +58,22 @@
   const mqttUrl = import.meta.env.VITE_MQTT_URL ?? 'ws://127.0.0.1:8083/mqtt'
 
   onMount(() => {
+    if (import.meta.env.DEV) {
+      ;(window as typeof window & { __runtimeUiTestHook__?: RuntimeUiTestHook }).__runtimeUiTestHook__ = {
+        applyDelta: (topic, payload) => {
+          applyMqttDelta(mqttProjectId || projection?.project_id || 'demo', topic, JSON.stringify(payload))
+        },
+      }
+    }
+
     void loadProjection()
   })
 
   onDestroy(() => {
     mqttClient?.end(true)
+    if (import.meta.env.DEV) {
+      delete (window as typeof window & { __runtimeUiTestHook__?: RuntimeUiTestHook }).__runtimeUiTestHook__
+    }
   })
 
   async function loadProjection() {
