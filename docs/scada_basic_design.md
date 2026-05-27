@@ -474,6 +474,17 @@ Builder UI着手前の共通インターフェースとして、Builder APIは `
 
 Builder UIは `known_code=true` のとき定型ガイドを表示し、`known_code=false` のときは `user_message` をそのまま表示する。
 
+#### Builder API エラーマッピングHTTPエンドポイント
+
+Builder UI から直接利用できる最小連携点として、Builder API は次のHTTPエンドポイントを提供する。
+
+- `POST /api/v1/errors/map`
+- request body: `{"error":"code=... path=... detail=..."}`
+- response body: 構造化マッピング出力仕様と同じ JSON
+- 不正JSONは `400` で `{"error":"invalid error map JSON: ..."}` を返す
+
+このエンドポイントは Builder UI 実装初期のエラー表示統一に使い、将来UI内へ同等ロジックを内包しても契約は維持する。
+
 ### OpenAPI共通コンポーネント運用ルール
 
 - `contracts/openapi/runtime.yaml` の `paths` では、成功応答、失敗応答ともに `components.responses` の `$ref` を優先して使用する。

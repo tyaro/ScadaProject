@@ -1,11 +1,43 @@
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+
 use scada_core::service::{print_health, ServiceRole};
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CodedError {
     code: String,
     path: String,
     detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct ConditionErrorMapping {
+    code: Option<String>,
+    path: Option<String>,
+    detail: Option<String>,
+    user_message: String,
+    known_code: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ErrorMapRequest {
+    error: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BuilderHttpRequest {
+    method: String,
+    path: String,
+    body: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BuilderHttpResponse {
+    status_code: u16,
+    reason: &'static str,
+    content_type: &'static str,
+    body: String,
 }
 
 fn main() {
@@ -15,13 +47,24 @@ fn main() {
         return;
     }
 
+    if args.iter().any(|arg| arg == "--serve") {
+        let addr = arg_value(&args, "--addr").unwrap_or_else(|| "127.0.0.1:18110".to_string());
+        eprintln!("builder-api listening on {addr}");
+        if let Err(error) = run_builder_server(&addr) {
+            eprintln!("builder-api serve failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     if let Some(raw) = arg_value(&args, "--map-error") {
         println!("{}", map_condition_error_message(&raw));
         return;
     }
 
     if let Some(raw) = arg_value(&args, "--map-error-json") {
-        println!("{}", map_condition_error_json(&raw));
+        let mapped = map_condition_error(&raw);
+        println!("{}", serde_json::to_string(&mapped).unwrap_or_else(|_| error_json("failed to serialize error mapping")));
         return;
     }
 
@@ -32,6 +75,98 @@ fn arg_value(args: &[String], name: &str) -> Option<String> {
     args.windows(2)
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
+}
+
+fn run_builder_server(addr: &str) -> Result<(), String> {
+    let listener = TcpListener::bind(addr).map_err(|error| error.to_string())?;
+    for incoming in listener.incoming() {
+        let mut stream = incoming.map_err(|error| error.to_string())?;
+        handle_builder_connection(&mut stream)?;
+    }
+
+    Ok(())
+}
+
+fn handle_builder_connection(stream: &mut TcpStream) -> Result<(), String> {
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+        .map_err(|error| error.to_string())?;
+    stream
+        .set_write_timeout(Some(std::time::Duration::from_secs(3)))
+        .map_err(|error| error.to_string())?;
+
+    let mut raw = String::new();
+    stream
+        .read_to_string(&mut raw)
+        .map_err(|error| error.to_string())?;
+
+    let response = match parse_http_request(&raw) {
+        Ok(request) => handle_builder_request(&request),
+        Err(message) => BuilderHttpResponse::json(400, error_json(&message)),
+    };
+
+    stream
+        .write_all(&response.to_http_bytes())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn parse_http_request(raw: &str) -> Result<BuilderHttpRequest, String> {
+    let (head, body) = raw
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "invalid http request".to_string())?;
+    let mut lines = head.lines();
+    let request_line = lines
+        .next()
+        .ok_or_else(|| "missing request line".to_string())?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts
+        .next()
+        .ok_or_else(|| "missing method".to_string())?
+        .to_string();
+    let path = parts
+        .next()
+        .ok_or_else(|| "missing path".to_string())?
+        .to_string();
+
+    Ok(BuilderHttpRequest {
+        method,
+        path,
+        body: body.to_string(),
+    })
+}
+
+fn handle_builder_request(request: &BuilderHttpRequest) -> BuilderHttpResponse {
+    if request.method == "GET" && request.path_without_query() == "/health" {
+        return BuilderHttpResponse::json(
+            200,
+            r#"{"service":"builder-api","status":"healthy"}"#.to_string(),
+        );
+    }
+
+    if request.method == "POST" && request.path_without_query() == "/api/v1/errors/map" {
+        let payload: ErrorMapRequest = match serde_json::from_str(request.body.as_str()) {
+            Ok(payload) => payload,
+            Err(error) => {
+                return BuilderHttpResponse::json(
+                    400,
+                    error_json(&format!("invalid error map JSON: {error}")),
+                );
+            }
+        };
+
+        let mapped = map_condition_error(&payload.error);
+        return match serde_json::to_string(&mapped) {
+            Ok(body) => BuilderHttpResponse::json(200, body),
+            Err(error) => BuilderHttpResponse::json(500, error_json(&error.to_string())),
+        };
+    }
+
+    BuilderHttpResponse::json(404, error_json("not found"))
+}
+
+fn error_json(message: &str) -> String {
+    format!(r#"{{"error":"{}"}}"#, message.replace('"', "\\\""))
 }
 
 fn parse_coded_error(raw: &str) -> Option<CodedError> {
@@ -53,15 +188,6 @@ fn parse_coded_error(raw: &str) -> Option<CodedError> {
 
 fn map_condition_error_message(raw: &str) -> String {
     map_condition_error(raw).user_message
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ConditionErrorMapping {
-    code: Option<String>,
-    path: Option<String>,
-    detail: Option<String>,
-    user_message: String,
-    known_code: bool,
 }
 
 fn map_condition_error(raw: &str) -> ConditionErrorMapping {
@@ -120,16 +246,51 @@ fn map_condition_error(raw: &str) -> ConditionErrorMapping {
     }
 }
 
-fn map_condition_error_json(raw: &str) -> String {
-    let mapped = map_condition_error(raw);
-    json!({
-        "code": mapped.code,
-        "path": mapped.path,
-        "detail": mapped.detail,
-        "user_message": mapped.user_message,
-        "known_code": mapped.known_code,
-    })
-    .to_string()
+impl BuilderHttpRequest {
+    fn new(method: &str, path: &str, body: &str) -> Self {
+        Self {
+            method: method.to_string(),
+            path: path.to_string(),
+            body: body.to_string(),
+        }
+    }
+
+    fn path_without_query(&self) -> &str {
+        self.path.split('?').next().unwrap_or(&self.path)
+    }
+}
+
+impl BuilderHttpResponse {
+    fn json(status_code: u16, body: String) -> Self {
+        Self {
+            status_code,
+            reason: status_reason(status_code),
+            content_type: "application/json",
+            body,
+        }
+    }
+
+    fn to_http_bytes(&self) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            self.status_code,
+            self.reason,
+            self.content_type,
+            self.body.as_bytes().len(),
+            self.body
+        )
+        .into_bytes()
+    }
+}
+
+fn status_reason(status_code: u16) -> &'static str {
+    match status_code {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        500 => "Internal Server Error",
+        _ => "Unknown",
+    }
 }
 
 #[cfg(test)]
@@ -167,24 +328,38 @@ mod tests {
     }
 
     #[test]
-    fn map_condition_error_json_returns_structured_payload() {
-        let raw =
-            "code=MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES path=object=pump-001 property=color detail=op 'in' requires non-empty values";
-        let payload = map_condition_error_json(raw);
-        let value: serde_json::Value = serde_json::from_str(&payload).expect("json");
+    fn handle_builder_request_returns_structured_mapping_json() {
+        let request = BuilderHttpRequest::new(
+            "POST",
+            "/api/v1/errors/map",
+            r#"{"error":"code=MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES path=object=pump-001 property=color detail=op 'in' requires non-empty values"}"#,
+        );
+        let response = handle_builder_request(&request);
+        let payload: serde_json::Value =
+            serde_json::from_str(&response.body).expect("valid json response");
 
+        assert_eq!(200, response.status_code);
         assert_eq!(
             "MODIFY_RULE_CONDITION_IN_REQUIRES_VALUES",
-            value["code"].as_str().expect("code")
-        );
-        assert_eq!(
-            "object=pump-001 property=color",
-            value["path"].as_str().expect("path")
+            payload["code"].as_str().expect("code")
         );
         assert_eq!(
             "invalid modify rule condition at object=pump-001 property=color: in requires non-empty values",
-            value["user_message"].as_str().expect("message")
+            payload["user_message"].as_str().expect("user_message")
         );
-        assert_eq!(Some(true), value["known_code"].as_bool());
+        assert_eq!(Some(true), payload["known_code"].as_bool());
+    }
+
+    #[test]
+    fn handle_builder_request_returns_bad_request_for_invalid_json() {
+        let request = BuilderHttpRequest::new("POST", "/api/v1/errors/map", "{not-json");
+        let response = handle_builder_request(&request);
+        let payload: serde_json::Value = serde_json::from_str(&response.body).expect("json");
+
+        assert_eq!(400, response.status_code);
+        assert!(payload["error"]
+            .as_str()
+            .expect("error")
+            .contains("invalid error map JSON"));
     }
 }
