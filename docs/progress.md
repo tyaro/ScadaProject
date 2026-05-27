@@ -150,6 +150,7 @@
   - ControlCommand失敗時にエラー表示へ遷移することを回帰テストへ追加
   - 手動リフレッシュ操作後にprojection再取得で表示値が更新されることを回帰テストへ追加
   - MQTT delta受信相当イベント後に表示値とdelta状態が更新されることを回帰テストへ追加
+  - 古いsequenceのMQTT deltaを破棄し、表示値を更新しないことを回帰テストへ追加
 - Preview RuntimeのMQTT再接続バックオフ改善
   - `--mqtt-subscribe` の再接続待機を指数バックオフ化
   - 失敗回数に応じて `1, 2, 4, 8, 16, 30秒` で待機（上限30秒）
@@ -231,7 +232,7 @@
 ## 次に行うこと
 
 1. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
-2. Playwrightテストに古いsequenceのMQTT deltaを破棄するシナリオを追加する。
+2. Runtime APIのHTTP境界テストをもう一段増やし、MQTT再接続時のsnapshot再同期を含むケースを検証する。
 3. `tauri-shell` supervisor設定のCLIヘルプとJSON Schemaの差分チェックを定期運用へ組み込む。
 
 ## フェーズ0完了条件棚卸し
@@ -262,6 +263,7 @@
 - `nvm use 24 && node --version`: `v24.16.0`
 - `cd apps/runtime-ui && npm run test:e2e`: 5 passed（手動リフレッシュ後の表示更新回帰テストを含む）
 - `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 6 passed（MQTT delta受信後の表示更新回帰テストを含む）
+- `. /Users/tyaromax/.nvm/nvm.sh && nvm use 24 && cd apps/runtime-ui && npm run test:e2e`: 7 passed（stale sequenceのMQTT delta破棄回帰テストを含む）
 - `nvm use 24 && npm --version`: `11.13.0`
 - `cargo fmt`: 成功
 - `cargo test`: 成功
