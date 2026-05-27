@@ -10,7 +10,8 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test:e2e": "playwright test",
     "tauri:check": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "tauri:dev": "cargo run --manifest-path src-tauri/Cargo.toml"
+    "tauri:dev": "cargo run --manifest-path src-tauri/Cargo.toml",
+    "tauri:dev:project": "SCADA_PROJECT_ROOT=$(cd ../.. && pwd) cargo run --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

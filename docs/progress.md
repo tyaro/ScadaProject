@@ -270,6 +270,9 @@ Runtime API境界テストを強化
   - `pick_screen_relative_path` command は `tauri-shell` の `normalize_relative_screen_path` を直接利用し、選択パスの project root 相対化と `config/screens/*.screen.json` 制約をネイティブ経路でも共通化した
   - `apps/builder-ui/package.json` に `tauri:check` / `tauri:dev` スクリプトを追加し、Builder UI から src-tauri 側のビルド確認を呼びやすくした
   - `apps/builder-ui/src-tauri` の unit test で必要な `url` を `dev-dependencies` へ追加し、非ローカルURL拒否テストを含む native shell テストを通過させた
+  - `apps/builder-ui/src-tauri` の project root 解決を強化し、`SCADA_PROJECT_ROOT` 優先、`current_dir` 推定、`resource_dir` 推定の順でワークスペースを検出するようにした
+  - src-tauri へ workspace marker 推定テスト（markers有/無）を追加し、環境差による project root 推定失敗を検出しやすくした
+  - `apps/builder-ui/package.json` に `tauri:dev:project` を追加し、`SCADA_PROJECT_ROOT` を明示した起動経路を用意した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -427,6 +430,8 @@ Runtime API境界テストを強化
 - `cargo check --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（src-tauri 追加後）
 - `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（2 passed）
 - `cd apps/builder-ui && npm run tauri:check`: 成功（src-tauri 依存補完後）
+- `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（4 passed, project root 推定テストを含む）
+- `cd apps/builder-ui && npm run check && npm run tauri:check`: 成功（project root 解決強化と `tauri:dev:project` 追加後）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
