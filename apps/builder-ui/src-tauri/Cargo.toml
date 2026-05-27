@@ -11,6 +11,9 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-shell = { path = "../../../crates/tauri-shell" }
 
+[dev-dependencies]
+url = "2"
+
 [[bin]]
 name = "builder-ui-shell"
 path = "src/main.rs"
