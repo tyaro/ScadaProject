@@ -505,21 +505,25 @@ test('applies supervise policy preset selection', async ({ page }) => {
 
 test('persists supervise policy across page reload', async ({ page }) => {
   await page.goto('/')
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: default')
 
   await page.getByTestId('supervise-policy-preset-select').selectOption('observe')
   await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
   await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: url')
 
   await page.reload()
 
   await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('observe')
   await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
   await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: url')
 })
 
 test('reads supervise policy from URL query and clears query on custom state', async ({ page }) => {
   await page.goto('/?supervisePolicy=balanced')
 
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: url')
   await expect(page.getByTestId('supervise-policy-url-override-badge')).toHaveText('URL override active')
   await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('balanced')
   await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
@@ -529,6 +533,24 @@ test('reads supervise policy from URL query and clears query on custom state', a
   await page.getByTestId('supervise-fail-service-exit-checkbox').uncheck()
 
   await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('custom')
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: localStorage')
   await expect(page.getByTestId('supervise-policy-url-override-badge')).toHaveCount(0)
   expect(page.url()).not.toContain('supervisePolicy=')
+})
+
+test('restores localStorage policy source when query is absent', async ({ page }) => {
+  await page.goto('/?supervisePolicy=balanced')
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: url')
+
+  await page.getByTestId('supervise-fail-parse-checkbox').check()
+  await page.getByTestId('supervise-fail-service-exit-checkbox').uncheck()
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('custom')
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: localStorage')
+  await expect(page.getByTestId('supervise-policy-url-override-badge')).toHaveCount(0)
+
+  await page.reload()
+
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('custom')
+  await expect(page.getByTestId('supervise-policy-source-badge')).toHaveText('Source: localStorage')
+  await expect(page.getByTestId('supervise-policy-url-override-badge')).toHaveCount(0)
 })

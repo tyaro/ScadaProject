@@ -55,6 +55,7 @@
   }
 
   type SupervisePolicyPreset = 'strict' | 'balanced' | 'observe' | 'custom'
+  type SupervisePolicySource = 'url' | 'localStorage' | 'default'
 
   const sampleKnownError =
     "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
@@ -156,6 +157,7 @@
   let superviseFailOnServiceExit = $state(true)
   let supervisePolicyHydrating = false
   let supervisePolicyUrlOverrideActive = $state(false)
+  let supervisePolicySource = $state<SupervisePolicySource>('default')
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -816,9 +818,11 @@
       if (supervisePolicyPreset === 'custom') {
         url.searchParams.delete(supervisePolicyQueryKey)
         supervisePolicyUrlOverrideActive = false
+        supervisePolicySource = 'localStorage'
       } else {
         url.searchParams.set(supervisePolicyQueryKey, supervisePolicyPreset)
         supervisePolicyUrlOverrideActive = true
+        supervisePolicySource = 'url'
       }
       const nextUrl = `${url.pathname}${url.search}${url.hash}`
       window.history.replaceState({}, '', nextUrl)
@@ -827,18 +831,18 @@
     }
   }
 
-  function restoreSupervisePolicy() {
+  function restoreSupervisePolicy(): boolean {
     try {
       const raw = localStorage.getItem(supervisePolicyStorageKey)
       if (!raw) {
-        return
+        return false
       }
       const parsed = JSON.parse(raw) as Record<string, unknown>
       if (
         typeof parsed.fail_on_parse_error !== 'boolean' ||
         typeof parsed.fail_on_service_exit !== 'boolean'
       ) {
-        return
+        return false
       }
 
       supervisePolicyHydrating = true
@@ -846,8 +850,11 @@
       superviseFailOnServiceExit = parsed.fail_on_service_exit
       syncSupervisePolicyPresetFromFlags()
       supervisePolicyHydrating = false
+      supervisePolicySource = 'localStorage'
+      return true
     } catch {
       supervisePolicyHydrating = false
+      return false
     }
   }
 
@@ -924,6 +931,7 @@
     const policyFromQuery = readSupervisePolicyFromQuery()
     if (policyFromQuery) {
       supervisePolicyUrlOverrideActive = true
+      supervisePolicySource = 'url'
       supervisePolicyHydrating = true
       applySupervisePolicyPreset(policyFromQuery)
       supervisePolicyHydrating = false
@@ -933,7 +941,10 @@
     }
 
     supervisePolicyUrlOverrideActive = false
-    restoreSupervisePolicy()
+    const restored = restoreSupervisePolicy()
+    if (!restored) {
+      supervisePolicySource = 'default'
+    }
   })
 
   function selectObject(index: number) {
@@ -1211,6 +1222,9 @@
               <option value="custom" disabled>custom (manual)</option>
             </select>
           </label>
+          <span class="chip muted" data-testid="supervise-policy-source-badge">
+            Source: {supervisePolicySource}
+          </span>
           {#if supervisePolicyUrlOverrideActive}
             <span class="chip warn" data-testid="supervise-policy-url-override-badge">URL override active</span>
           {/if}
