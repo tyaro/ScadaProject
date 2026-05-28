@@ -313,3 +313,45 @@ test('uses tauri picker result for save-as path', async ({ page }) => {
   await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/picked/by-tauri.screen.json')
   await expect(page.getByTestId('io-status')).toContainText('Selected config/screens/picked/by-tauri.screen.json')
 })
+
+test('uses legacy tauri invoke path for save-as picker', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      invoke: async (command: string) => {
+        if (command !== 'pick_screen_relative_path') {
+          throw new Error(`unexpected command: ${command}`)
+        }
+        return {
+          cancelled: false,
+          relative_path: 'config/screens/picked/by-legacy.screen.json',
+        }
+      },
+    }
+  })
+
+  await page.goto('/')
+
+  await page.getByTestId('pick-save-as-path-button').click()
+  await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/picked/by-legacy.screen.json')
+  await expect(page.getByTestId('io-status')).toContainText('Selected config/screens/picked/by-legacy.screen.json')
+})
+
+test('shows path selection failure when tauri picker returns invalid contract', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async () => {
+          return {
+            cancelled: false,
+            relative_path: '../outside.screen.json',
+          }
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+
+  await page.getByTestId('pick-save-as-path-button').click()
+  await expect(page.getByTestId('io-status')).toContainText('Path selection failed: invalid relative_path from tauri picker')
+})
