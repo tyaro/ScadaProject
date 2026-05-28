@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '0 18 * * *'
   workflow_dispatch:
     inputs:
       run_bind_tests:
@@ -67,7 +69,7 @@ jobs:
   bind-dependent:
     name: Bind-Dependent Checks
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.run_bind_tests == 'true'
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_bind_tests == 'true')
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -104,7 +106,7 @@ jobs:
             patchelf
 
       - name: Install Builder UI Playwright browser
-        if: inputs.run_builder_ui_e2e == 'true'
+        if: github.event_name == 'schedule' || inputs.run_builder_ui_e2e == 'true'
         working-directory: apps/builder-ui
         run: npx playwright install --with-deps chromium
 
@@ -116,7 +118,7 @@ jobs:
         env:
           RUN_BIND_TESTS: "1"
           RUN_RUNTIME_UI_E2E: "1"
-          RUN_BUILDER_UI_E2E: ${{ inputs.run_builder_ui_e2e == 'true' && '1' || '0' }}
+          RUN_BUILDER_UI_E2E: ${{ github.event_name == 'schedule' && '1' || (inputs.run_builder_ui_e2e == 'true' && '1' || '0') }}
         run: scripts/check_local_ci.sh
 
       - name: Upload bind-dependent logs

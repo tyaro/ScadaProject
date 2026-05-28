@@ -308,6 +308,7 @@ Runtime API境界テストを強化
   - `push` / `pull_request` では標準チェックを実行
   - `workflow_dispatch` の `run_bind_tests=true` でPlaywright E2Eとbind依存チェックを実行
   - bind依存チェック失敗時は `/tmp` ログとPlaywright結果をartifact保存
+  - `schedule`（毎日 UTC 18:00）で bind依存チェック + Runtime UI E2E + Builder UI E2E を定期実行する自動運用を追加
 - GitHub公開リポジトリ作成と初回CI確認
   - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push` で公開リポジトリを作成
   - 初回CI失敗原因を特定（`rust-toolchain.toml` の `stable-aarch64-apple-darwin` 指定）
