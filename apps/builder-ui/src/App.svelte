@@ -61,6 +61,7 @@
   const sampleUnknownError =
     "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state"
   const supervisePolicyStorageKey = 'scada.builder.supervise.policy.v1'
+  const supervisePolicyQueryKey = 'supervisePolicy'
   const propertyOptions = ['visible', 'color', 'text']
   const conditionOpOptions = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'any', 'all']
   const screenIdPattern = /^[A-Za-z0-9_-]+$/
@@ -795,6 +796,34 @@
     }
   }
 
+  function readSupervisePolicyFromQuery(): SupervisePolicyPreset | null {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const raw = params.get(supervisePolicyQueryKey)
+      if (raw === 'strict' || raw === 'balanced' || raw === 'observe') {
+        return raw
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  function persistSupervisePolicyQuery() {
+    try {
+      const url = new URL(window.location.href)
+      if (supervisePolicyPreset === 'custom') {
+        url.searchParams.delete(supervisePolicyQueryKey)
+      } else {
+        url.searchParams.set(supervisePolicyQueryKey, supervisePolicyPreset)
+      }
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`
+      window.history.replaceState({}, '', nextUrl)
+    } catch {
+      // Ignore URL update failures in restricted browser contexts.
+    }
+  }
+
   function restoreSupervisePolicy() {
     try {
       const raw = localStorage.getItem(supervisePolicyStorageKey)
@@ -830,6 +859,7 @@
       superviseFailOnServiceExit = true
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
+        persistSupervisePolicyQuery()
       }
       return
     }
@@ -839,6 +869,7 @@
       superviseFailOnServiceExit = true
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
+        persistSupervisePolicyQuery()
       }
       return
     }
@@ -847,6 +878,7 @@
     superviseFailOnServiceExit = false
     if (!supervisePolicyHydrating) {
       persistSupervisePolicy()
+      persistSupervisePolicyQuery()
     }
   }
 
@@ -855,6 +887,7 @@
       supervisePolicyPreset = 'strict'
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
+        persistSupervisePolicyQuery()
       }
       return
     }
@@ -863,6 +896,7 @@
       supervisePolicyPreset = 'balanced'
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
+        persistSupervisePolicyQuery()
       }
       return
     }
@@ -871,6 +905,7 @@
       supervisePolicyPreset = 'observe'
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
+        persistSupervisePolicyQuery()
       }
       return
     }
@@ -878,11 +913,23 @@
     supervisePolicyPreset = 'custom'
     if (!supervisePolicyHydrating) {
       persistSupervisePolicy()
+      persistSupervisePolicyQuery()
     }
   }
 
   onMount(() => {
+    const policyFromQuery = readSupervisePolicyFromQuery()
+    if (policyFromQuery) {
+      supervisePolicyHydrating = true
+      applySupervisePolicyPreset(policyFromQuery)
+      supervisePolicyHydrating = false
+      persistSupervisePolicy()
+      persistSupervisePolicyQuery()
+      return
+    }
+
     restoreSupervisePolicy()
+    persistSupervisePolicyQuery()
   })
 
   function selectObject(index: number) {

@@ -268,8 +268,9 @@ Runtime API境界テストを強化
   - Builder UI の `Supervisor Log Summary` に `fail on parse error` / `fail on service exit` トグルを追加し、CLI の `fail-on` 運用に近い判定ポリシーを画面上で切り替えられるようにした
   - `strict / balanced / observe` の policy preset を追加し、fail条件トグルを一括で切り替えられるようにした（手動組み合わせは `custom` として表示）
   - Supervisor policy 設定を localStorage へ永続化し、Builder UI再読み込み後も preset と fail条件トグルを復元できるようにした
+  - URL query `?supervisePolicy=<strict|balanced|observe>` の読み書きを追加し、共有リンクからの初期判定切替と、`custom` 化時のquery自動クリアを実装した
   - health 表示を `flagged_issues`（トグル反映後）と `raw_issues`（生集計）に分離し、判定ルールと実測値を同時に追えるようにした
-  - `apps/builder-ui` の E2E を13ケースへ拡張し、Tauri bridge経由の supervise summary 表示、policy toggle再評価、policy preset適用、policy永続化回帰を固定化した
+  - `apps/builder-ui` の E2E を14ケースへ拡張し、Tauri bridge経由の supervise summary 表示、policy toggle再評価、policy preset適用、policy永続化、URL query連携回帰を固定化した
   - `crates/tauri-shell` に `normalize_relative_screen_path` / `is_valid_screen_relative_path` を追加し、`config/screens/*.screen.json` 制約と project root 外パス拒否を共通ロジックとして固定化した
   - Tauri command の返却契約として再利用する `PickScreenRelativePathResult` 型を `tauri-shell` へ追加し、command実装前にテスト可能な境界を先に用意した
   - `tauri-shell` CLI に `--pick-screen-relative-path` を追加し、`--project-root` と `--absolute-path`（または `--cancel`）から `PickScreenRelativePathResult` JSON を返す command 互換経路を実装した
@@ -496,6 +497,8 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run test:e2e`: 成功（12 passed、`strict/balanced/observe` preset適用回帰を含む）
 - `cd apps/builder-ui && npm run check`: 成功（Supervisor policy localStorage永続化追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（13 passed、reload後の policy 復元回帰を含む）
+- `cd apps/builder-ui && npm run check`: 成功（Supervisor policy URL query 連携追加後）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（14 passed、`?supervisePolicy=balanced` 読み取りと custom化時queryクリア回帰を含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

@@ -516,3 +516,17 @@ test('persists supervise policy across page reload', async ({ page }) => {
   await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
   await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).not.toBeChecked()
 })
+
+test('reads supervise policy from URL query and clears query on custom state', async ({ page }) => {
+  await page.goto('/?supervisePolicy=balanced')
+
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('balanced')
+  await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).toBeChecked()
+
+  await page.getByTestId('supervise-fail-parse-checkbox').check()
+  await page.getByTestId('supervise-fail-service-exit-checkbox').uncheck()
+
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('custom')
+  expect(page.url()).not.toContain('supervisePolicy=')
+})
