@@ -755,6 +755,14 @@
     return ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'].includes(op)
   }
 
+  function superviseSummaryIssueCount(summary: SuperviseLogSummary): number {
+    return summary.parse_errors + summary.services.reduce((total, service) => total + service.exited + service.started_false, 0)
+  }
+
+  function superviseSummaryHasIssues(summary: SuperviseLogSummary): boolean {
+    return superviseSummaryIssueCount(summary) > 0
+  }
+
   function selectObject(index: number) {
     selectedObjectIndex = index
     selectedRuleIndex = 0
@@ -1000,7 +1008,19 @@
           <code>{runtimePreviewStatus}</code>
         </div>
         <div class="supervise-summary" data-testid="supervise-summary-panel">
-          <h4>Supervisor Log Summary</h4>
+          <div class="supervise-summary-header">
+            <h4>Supervisor Log Summary</h4>
+            {#if superviseSummary}
+              <span
+                class:good={!superviseSummaryHasIssues(superviseSummary)}
+                class:warn={superviseSummaryHasIssues(superviseSummary)}
+                class="chip"
+                data-testid="supervise-summary-health-badge"
+              >
+                {superviseSummaryHasIssues(superviseSummary) ? 'Issue detected' : 'Healthy'}
+              </span>
+            {/if}
+          </div>
           <label class="field">
             <span>Log Directory</span>
             <input data-testid="supervise-log-dir-field" bind:value={superviseLogDir} type="text" />
@@ -1025,6 +1045,12 @@
               <span>Counts</span>
               <code>
                 cycle={superviseSummary.cycle_summaries} final={superviseSummary.final_summaries} parse_errors={superviseSummary.parse_errors}
+              </code>
+            </div>
+            <div class="result-row compact project-path-row" data-testid="supervise-summary-issues-row">
+              <span>Health</span>
+              <code>
+                issues={superviseSummaryIssueCount(superviseSummary)} exited_total={superviseSummary.services.reduce((total, service) => total + service.exited, 0)} started_false_total={superviseSummary.services.reduce((total, service) => total + service.started_false, 0)}
               </code>
             </div>
             <ul class="hint-list" data-testid="supervise-summary-services-list">

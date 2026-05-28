@@ -158,6 +158,11 @@ h1 {
   color: var(--good);
 }
 
+.chip.warn {
+  background: #fff4e8;
+  color: var(--warn);
+}
+
 .chip.muted {
   background: #f0ebe3;
   color: var(--muted);
@@ -225,6 +230,17 @@ button:focus {
 
 .project-path-row {
   margin-top: 12px;
+}
+
+.supervise-summary {
+  margin-top: 12px;
+}
+
+.supervise-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .project-io-actions {

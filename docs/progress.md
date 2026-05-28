@@ -264,6 +264,7 @@ Runtime API境界テストを強化
   - `apps/builder-ui/src-tauri` に `read_supervise_log_summary` command を追加し、`supervise-loop.jsonl`（cycle/final/parse error）と `*.log`（service別 lines/exited/started_false）を集計して返す最小導線を実装した
   - `apps/builder-ui/src/tauriFileDialog.ts` に `readSuperviseLogSummary` bridge と契約型ガードを追加し、Tauri command応答形の崩れをUI側で検知できるようにした
   - Builder UI に `Supervisor Log Summary` パネル（log dir入力、Tauri経由ロード、counts/service一覧表示）を追加し、監視ログ集計CLI相当の結果を最小UIで確認できるようにした
+  - Builder UI の `Supervisor Log Summary` にヘルス判定バッジ（`Healthy` / `Issue detected`）と issue集計行（issues/exited_total/started_false_total）を追加し、`fail-on` 相当の異常有無を画面上で即確認できるようにした
   - `apps/builder-ui` の E2E を10ケースへ拡張し、Tauri bridge経由の supervise summary 表示回帰を固定化した
   - `crates/tauri-shell` に `normalize_relative_screen_path` / `is_valid_screen_relative_path` を追加し、`config/screens/*.screen.json` 制約と project root 外パス拒否を共通ロジックとして固定化した
   - Tauri command の返却契約として再利用する `PickScreenRelativePathResult` 型を `tauri-shell` へ追加し、command実装前にテスト可能な境界を先に用意した
@@ -483,6 +484,8 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run tauri:check`: 成功（`read_supervise_log_summary` command追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（10 passed、supervise summary bridge回帰を含む）
 - `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（7 passed、supervise summary集計テストを含む）
+- `cd apps/builder-ui && npm run check`: 成功（Supervisor Summary の health badge + issue totals 追加後）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（10 passed、`supervise-summary-health-badge` / `supervise-summary-issues-row` 検証を含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

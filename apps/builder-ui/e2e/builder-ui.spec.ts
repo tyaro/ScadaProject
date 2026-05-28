@@ -398,7 +398,11 @@ test('loads supervise log summary through tauri bridge', async ({ page }) => {
   await page.getByTestId('load-supervise-summary-button').click()
 
   await expect(page.getByTestId('supervise-summary-status-row')).toContainText('Loaded summary from /tmp/scada-supervise-log')
+  await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
   await expect(page.getByTestId('supervise-summary-counts-row')).toContainText('cycle=3 final=1 parse_errors=0')
+  await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
+    'issues=1 exited_total=1 started_false_total=0'
+  )
   await expect(page.getByTestId('supervise-summary-services-list')).toContainText(
     'tag-server: lines=10 exited=1 started_false=0'
   )
