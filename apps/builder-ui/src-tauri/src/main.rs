@@ -60,13 +60,20 @@ async fn pick_screen_relative_path(
         .map_err(|error| format!("wait picker result: {error}"))?
         .map_err(|error| format!("receive picker result: {error}"))?;
 
+    pick_screen_relative_path_from_dialog_result(&project_root, picked_file)
+}
+
+fn pick_screen_relative_path_from_dialog_result(
+    project_root: &Path,
+    picked_file: Option<FilePath>,
+) -> Result<PickScreenRelativePathResult, String> {
     let Some(picked_file) = picked_file else {
         return Ok(PickScreenRelativePathResult::cancelled());
     };
 
     let absolute_path = dialog_file_path_to_path_buf(picked_file)
         .ok_or_else(|| "selected path must be local filesystem path".to_string())?;
-    let relative_path = normalize_relative_screen_path(&project_root, &absolute_path)?;
+    let relative_path = normalize_relative_screen_path(project_root, &absolute_path)?;
 
     Ok(PickScreenRelativePathResult::selected(relative_path))
 }
@@ -338,5 +345,56 @@ mod tests {
         assert_eq!(2, summary.services[0].lines);
         assert_eq!(1, summary.services[0].exited);
         assert_eq!(1, summary.services[0].started_false);
+    }
+
+    #[test]
+    fn picker_result_returns_cancelled_when_dialog_is_cancelled() {
+        let root = Path::new("/tmp/scada-project");
+        let picked = pick_screen_relative_path_from_dialog_result(root, None).expect("cancelled");
+
+        assert_eq!(PickScreenRelativePathResult::cancelled(), picked);
+    }
+
+    #[test]
+    fn picker_result_returns_selected_relative_path_for_valid_pick() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("scada-picker-test-{suffix}"));
+        let screen_dir = root.join("config/screens");
+        fs::create_dir_all(&screen_dir).expect("create screen dir");
+        let selected = screen_dir.join("picked.screen.json");
+        fs::write(&selected, "{}\n").expect("write picked screen");
+
+        let picked = pick_screen_relative_path_from_dialog_result(
+            &root,
+            Some(FilePath::Path(selected.clone())),
+        )
+        .expect("selected");
+
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(
+            PickScreenRelativePathResult::selected("config/screens/picked.screen.json".to_string()),
+            picked
+        );
+    }
+
+    #[test]
+    fn picker_result_returns_error_for_non_local_or_invalid_path() {
+        let root = Path::new("/tmp/scada-project");
+        let url = url::Url::parse("https://example.com/file.json").expect("url");
+
+        let non_local = pick_screen_relative_path_from_dialog_result(root, Some(FilePath::Url(url)));
+        assert!(non_local.is_err());
+
+        let outside = pick_screen_relative_path_from_dialog_result(
+            root,
+            Some(FilePath::Path(
+                Path::new("/tmp/outside/picked.screen.json").to_path_buf(),
+            )),
+        );
+        assert!(outside.is_err());
     }
 }

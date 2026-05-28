@@ -291,6 +291,7 @@ Runtime API境界テストを強化
   - `docs/builder_ui_tauri_runbook.md` の 5.1/5.2/5.3 手順による native picker 手動検証を完了し、実機の成功/キャンセル/不正パス拒否挙動を確認した
   - `scripts/check_local_ci.sh` の拡張実行（`RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` / `RUN_BUILDER_UI_E2E=1` / `RUN_SUPERVISE_LOG_CHECKS=1`）で露出した `tauri-shell` integration test のタイミング依存失敗を切り分け、通常経路では `#[ignore]` 化して拡張チェック完走を回復した
   - `apps/builder-ui` の E2E に I/O status 専用行（`I/O Status`）の表示確認と picker キャンセル時の `File selection cancelled` 回帰を追加し、runbook 手順 5.1/5.2 の UI確認を自動化した
+  - `apps/builder-ui/src-tauri` の picker 結果処理を helper 化し、非同期 picker 境界の unit test（cancel/selected/error）を追加して UI E2E と別レイヤで回帰検知できるようにした
   - `apps/builder-ui` の E2E に `__TAURI__.invoke`（legacy）経路と tauri picker 不正レスポンス拒否ケースを追加し、invoke実装差と契約逸脱の回帰を固定化した
   - `scripts/check_local_ci.sh` に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E を実行する任意フラグを追加し、必要時に9ケース回帰を標準入口へ組み込めるようにした
   - `apps/builder-ui/src-tauri` に `initial_path` 妥当性ヘルパーを追加し、`config/screens/*.screen.json` 以外は picker 初期値へ採用しないようにした
@@ -428,8 +429,8 @@ Runtime API境界テストを強化
 ## 次に行うこと
 
 1. `tauri-shell` の `supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` を専用ジョブまたは夜間ジョブで個別実行し、`#[ignore]` としたケースの継続監視方法を決める。
-2. `apps/builder-ui/src-tauri` の picker 非同期化に関する単体テスト（cancel/selected/error）を追加し、UI側 E2E と合わせて境界回帰を強化する。
-3. `gh workflow run ci.yml` の結果を定期レビューし、`schedule` 実行（nightly）で Builder/Runtime 拡張チェックが連続成功しているかを追跡する。
+2. `gh workflow run ci.yml` の結果を定期レビューし、`schedule` 実行（nightly）で Builder/Runtime 拡張チェックが連続成功しているかを追跡する。
+3. `check_local_ci.sh` の `timeout` コマンド未導入環境（macOS標準）でも待機制御できるよう、`gtimeout` へのフォールバックか導入手順を整備する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -522,6 +523,8 @@ Runtime API境界テストを強化
 - `gh api repos/tyaro/ScadaProject/actions/runs --jq ...`: 成功（最新CIで `schedule` Run `26600339600` と `push` Run `26571134072` がともに `completed/success`）
 - `cd apps/builder-ui && npm run check`: 成功（I/O status 専用行の testid 追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（16 passed、pickerキャンセル時 `File selection cancelled` と `I/O Status` 行表示回帰を含む）
+- `cd apps/builder-ui && npm run tauri:check`: 成功（picker 結果処理 helper 化と src-tauri unit test 追加後）
+- `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（10 passed、picker cancel/selected/error unit test を含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
