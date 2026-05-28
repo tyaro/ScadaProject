@@ -243,6 +243,27 @@ button:focus {
   gap: 10px;
 }
 
+.supervise-summary-toggles {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.supervise-summary-toggles label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.supervise-summary-toggles input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+}
+
 .project-io-actions {
   display: flex;
   flex-wrap: wrap;

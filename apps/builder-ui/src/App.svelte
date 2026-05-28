@@ -147,6 +147,8 @@
   let superviseSummary = $state<SuperviseLogSummary | null>(null)
   let superviseSummaryStatus = $state('No supervise log summary loaded')
   let superviseSummaryLoading = $state(false)
+  let superviseFailOnParseError = $state(true)
+  let superviseFailOnServiceExit = $state(true)
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -759,8 +761,19 @@
     return summary.parse_errors + summary.services.reduce((total, service) => total + service.exited + service.started_false, 0)
   }
 
+  function superviseSummaryFlaggedIssueCount(summary: SuperviseLogSummary): number {
+    let total = 0
+    if (superviseFailOnParseError) {
+      total += summary.parse_errors
+    }
+    if (superviseFailOnServiceExit) {
+      total += summary.services.reduce((sum, service) => sum + service.exited + service.started_false, 0)
+    }
+    return total
+  }
+
   function superviseSummaryHasIssues(summary: SuperviseLogSummary): boolean {
-    return superviseSummaryIssueCount(summary) > 0
+    return superviseSummaryFlaggedIssueCount(summary) > 0
   }
 
   function selectObject(index: number) {
@@ -1025,6 +1038,16 @@
             <span>Log Directory</span>
             <input data-testid="supervise-log-dir-field" bind:value={superviseLogDir} type="text" />
           </label>
+          <div class="supervise-summary-toggles" data-testid="supervise-summary-policy-row">
+            <label>
+              <input data-testid="supervise-fail-parse-checkbox" bind:checked={superviseFailOnParseError} type="checkbox" />
+              fail on parse error
+            </label>
+            <label>
+              <input data-testid="supervise-fail-service-exit-checkbox" bind:checked={superviseFailOnServiceExit} type="checkbox" />
+              fail on service exit
+            </label>
+          </div>
           <div class="project-io-actions">
             <button
               class="secondary"
@@ -1050,7 +1073,7 @@
             <div class="result-row compact project-path-row" data-testid="supervise-summary-issues-row">
               <span>Health</span>
               <code>
-                issues={superviseSummaryIssueCount(superviseSummary)} exited_total={superviseSummary.services.reduce((total, service) => total + service.exited, 0)} started_false_total={superviseSummary.services.reduce((total, service) => total + service.started_false, 0)}
+                flagged_issues={superviseSummaryFlaggedIssueCount(superviseSummary)} raw_issues={superviseSummaryIssueCount(superviseSummary)} exited_total={superviseSummary.services.reduce((total, service) => total + service.exited, 0)} started_false_total={superviseSummary.services.reduce((total, service) => total + service.started_false, 0)}
               </code>
             </div>
             <ul class="hint-list" data-testid="supervise-summary-services-list">

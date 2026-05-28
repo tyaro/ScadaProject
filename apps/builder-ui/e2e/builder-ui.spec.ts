@@ -401,9 +401,55 @@ test('loads supervise log summary through tauri bridge', async ({ page }) => {
   await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
   await expect(page.getByTestId('supervise-summary-counts-row')).toContainText('cycle=3 final=1 parse_errors=0')
   await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
-    'issues=1 exited_total=1 started_false_total=0'
+    'flagged_issues=1 raw_issues=1 exited_total=1 started_false_total=0'
   )
   await expect(page.getByTestId('supervise-summary-services-list')).toContainText(
     'tag-server: lines=10 exited=1 started_false=0'
+  )
+})
+
+test('re-evaluates supervise summary health by fail policy toggles', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async (command: string) => {
+          if (command === 'read_supervise_log_summary') {
+            return {
+              cycle_summaries: 1,
+              final_summaries: 1,
+              parse_errors: 0,
+              services: [
+                {
+                  service: 'preview-runtime',
+                  lines: 3,
+                  exited: 1,
+                  started_false: 0,
+                },
+              ],
+            }
+          }
+
+          if (command === 'pick_screen_relative_path') {
+            return {
+              cancelled: true,
+              relative_path: null,
+            }
+          }
+
+          throw new Error(`unexpected command: ${command}`)
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+  await page.getByTestId('load-supervise-summary-button').click()
+
+  await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
+  await page.getByTestId('supervise-fail-service-exit-checkbox').uncheck()
+
+  await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Healthy')
+  await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
+    'flagged_issues=0 raw_issues=1 exited_total=1 started_false_total=0'
   )
 })
