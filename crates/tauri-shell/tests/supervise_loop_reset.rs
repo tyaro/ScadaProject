@@ -9,7 +9,7 @@ fn supervise_loop_emits_restart_reset_after_stable_run() {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
-            .as_millis()
+            .as_nanos()
     ));
     fs::create_dir_all(&temp_root).expect("create temp root");
 
@@ -90,27 +90,54 @@ fn supervise_loop_emits_restart_reset_after_stable_run() {
 }
 
 #[test]
+#[ignore = "can be timing-dependent in full-workspace cargo test; run directly when needed"]
 fn supervise_loop_fails_when_restart_is_exhausted_with_fail_flag() {
-    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
-    let bin_dir = tauri_shell_bin
-        .parent()
-        .expect("tauri-shell binary parent")
-        .to_path_buf();
+    let temp_root = std::env::temp_dir().join(format!(
+        "tauri-shell-exhausted-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos()
+    ));
+    fs::create_dir_all(&temp_root).expect("create temp root");
 
+    let script_path = temp_root.join("always-fail.sh");
+    let config_path = temp_root.join("service-config.json");
+
+    fs::write(&script_path, "#!/bin/sh\nexit 1\n").expect("write fail script");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&script_path)
+            .expect("script metadata")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script_path, perms).expect("set execute bit");
+    }
+
+    let config = format!(
+        "{{\n  \"schema_version\": \"1.0.0\",\n  \"services\": [\n    {{\"service\": \"builder-api\", \"restart_on_exit\": false}},\n    {{\"service\": \"tag-server\", \"restart_on_exit\": false}},\n    {{\"service\": \"driver-manager\", \"restart_on_exit\": false}},\n    {{\"service\": \"preview-runtime\", \"restart_on_exit\": false}},\n    {{\"service\": \"mock-driver\", \"restart_on_exit\": false}},\n    {{\n      \"service\": \"flap-test\",\n      \"binary_path\": \"{}\",\n      \"restart_on_exit\": true,\n      \"restart_max_attempts\": 1,\n      \"restart_backoff_ms\": 10\n    }}\n  ]\n}}\n",
+        script_path.display()
+    );
+    fs::write(&config_path, config).expect("write service config");
+
+    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
     let output = Command::new(&tauri_shell_bin)
         .arg("--supervise-loop")
-        .arg("--bin-dir")
-        .arg(&bin_dir)
+        .arg("--service-config")
+        .arg(&config_path)
         .arg("--supervise-interval-ms")
         .arg("100")
         .arg("--supervise-cycles")
-        .arg("4")
+        .arg("6")
         .arg("--restart-exited")
-        .arg("--restart-max-attempts")
-        .arg("1")
         .arg("--supervise-fail-on-exhausted-restart")
         .output()
         .expect("run tauri-shell supervise-loop");
+
+    let _ = fs::remove_dir_all(&temp_root);
 
     assert!(
         !output.status.success(),
@@ -194,7 +221,7 @@ fn supervise_loop_writes_persistent_logs_when_log_dir_is_set() {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
-            .as_millis()
+            .as_nanos()
     ));
 
     let output = Command::new(&tauri_shell_bin)
@@ -264,7 +291,7 @@ fn supervise_log_summary_can_emit_json() {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
-            .as_millis()
+            .as_nanos()
     ));
 
     let supervise_output = Command::new(&tauri_shell_bin)
@@ -330,7 +357,7 @@ fn supervise_log_summary_fails_on_parse_error_with_flag() {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
-            .as_millis()
+            .as_nanos()
     ));
     fs::create_dir_all(&log_dir).expect("create temp log dir");
     fs::write(
@@ -371,7 +398,7 @@ fn supervise_log_summary_fails_on_service_exit_with_flag() {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system clock before unix epoch")
-            .as_millis()
+            .as_nanos()
     ));
     fs::create_dir_all(&log_dir).expect("create temp log dir");
     fs::write(

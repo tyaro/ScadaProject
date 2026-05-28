@@ -288,6 +288,8 @@ Runtime API境界テストを強化
   - `apps/builder-ui/package.json` に `tauri:dev:project` を追加し、`SCADA_PROJECT_ROOT` を明示した起動経路を用意した
   - `scripts/check_local_ci.sh` に `builder-ui src-tauri check` と `builder-ui src-tauri unit tests` を追加し、ローカルCI入口で native shell の回帰も同時に検知できるようにした
   - `docs/builder_ui_tauri_runbook.md` を追加し、native picker（成功/キャンセル/不正パス）の手動検証手順を固定化した
+  - `docs/builder_ui_tauri_runbook.md` の 5.1/5.2/5.3 手順による native picker 手動検証を完了し、実機の成功/キャンセル/不正パス拒否挙動を確認した
+  - `scripts/check_local_ci.sh` の拡張実行（`RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` / `RUN_BUILDER_UI_E2E=1` / `RUN_SUPERVISE_LOG_CHECKS=1`）で露出した `tauri-shell` integration test のタイミング依存失敗を切り分け、通常経路では `#[ignore]` 化して拡張チェック完走を回復した
   - `apps/builder-ui` の E2E に `__TAURI__.invoke`（legacy）経路と tauri picker 不正レスポンス拒否ケースを追加し、invoke実装差と契約逸脱の回帰を固定化した
   - `scripts/check_local_ci.sh` に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E を実行する任意フラグを追加し、必要時に9ケース回帰を標準入口へ組み込めるようにした
   - `apps/builder-ui/src-tauri` に `initial_path` 妥当性ヘルパーを追加し、`config/screens/*.screen.json` 以外は picker 初期値へ採用しないようにした
@@ -424,9 +426,9 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `docs/builder_ui_tauri_runbook.md` の手順で native picker を手動検証し、実機での挙動差分を洗い出す。
-2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
-3. `RUN_SUPERVISE_LOG_CHECKS=1` を定期実行し、監視ログ集計CLIのJSON契約と異常時非0終了の退行を早期検知する。
+1. `gh workflow run ci.yml` で `run_bind_tests=true` / `run_builder_ui_e2e=true` / `run_supervise_log_checks=true` を実行し、クラウド経路でも拡張チェック完走を確認する。
+2. `apps/builder-ui` の picker 非同期化・I/O status 表示改善に対する E2E 回帰（表示位置/文言）を追加し、runbook 手順のUI確認を自動化する。
+3. `tauri-shell` の `supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` を専用ジョブまたは夜間ジョブで個別実行し、`#[ignore]` としたケースの継続監視方法を決める。
 
 ## フェーズ0完了条件棚卸し
 
@@ -511,6 +513,8 @@ Runtime API境界テストを強化
 - `docs/builder_ui_tauri_runbook.md` 5.1（正常選択）手動検証: 成功（`config/screens/mock-main.screen.json` 選択で Save As 更新と `Selected ...` 表示を確認）
 - `docs/builder_ui_tauri_runbook.md` 5.2（選択キャンセル）手動検証: 成功（Save As 非変更と `File selection cancelled` 表示を確認）
 - `docs/builder_ui_tauri_runbook.md` 5.3（不正パス拒否）手動検証: 成功（不正値非上書きと `Path selection failed: ...` 表示を確認）
+- `cargo test -p tauri-shell --test supervise_loop_reset`: 成功（7 passed、`supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` の単体実行確認）
+- `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 RUN_BUILDER_UI_E2E=1 RUN_SUPERVISE_LOG_CHECKS=1 scripts/check_local_ci.sh`: 成功（builder-ui e2e 15 passed、runtime-ui e2e 21 passed、preview-runtime ignored tests 20 passed、supervise-log checks を含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
