@@ -2073,9 +2073,13 @@ mod tests {
     }
 
     fn write_test_screen_definition(name: &str) -> PathBuf {
+        let unique_suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
         let screen_path = std::env::temp_dir().join(format!(
-            "scada-preview-runtime-screen-{name}-{}.json",
-            std::process::id()
+            "scada-preview-runtime-screen-{name}-{}-{unique_suffix}.json",
+            std::process::id(),
         ));
         fs::write(
             &screen_path,
