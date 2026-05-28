@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import {
     isBuilderSaveScreenResponse,
     isBuilderErrorMapResponse,
@@ -60,6 +60,7 @@
     "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
   const sampleUnknownError =
     "code=SOME_NEW_ERROR path=object=valve-002 property=text detail=unexpected runtime validation state"
+  const supervisePolicyStorageKey = 'scada.builder.supervise.policy.v1'
   const propertyOptions = ['visible', 'color', 'text']
   const conditionOpOptions = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'between', 'in', 'any', 'all']
   const screenIdPattern = /^[A-Za-z0-9_-]+$/
@@ -152,6 +153,7 @@
   let supervisePolicyPreset = $state<SupervisePolicyPreset>('strict')
   let superviseFailOnParseError = $state(true)
   let superviseFailOnServiceExit = $state(true)
+  let supervisePolicyHydrating = false
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -779,6 +781,44 @@
     return superviseSummaryFlaggedIssueCount(summary) > 0
   }
 
+  function persistSupervisePolicy() {
+    try {
+      localStorage.setItem(
+        supervisePolicyStorageKey,
+        JSON.stringify({
+          fail_on_parse_error: superviseFailOnParseError,
+          fail_on_service_exit: superviseFailOnServiceExit,
+        })
+      )
+    } catch {
+      // Ignore persistence failures in restricted browser contexts.
+    }
+  }
+
+  function restoreSupervisePolicy() {
+    try {
+      const raw = localStorage.getItem(supervisePolicyStorageKey)
+      if (!raw) {
+        return
+      }
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (
+        typeof parsed.fail_on_parse_error !== 'boolean' ||
+        typeof parsed.fail_on_service_exit !== 'boolean'
+      ) {
+        return
+      }
+
+      supervisePolicyHydrating = true
+      superviseFailOnParseError = parsed.fail_on_parse_error
+      superviseFailOnServiceExit = parsed.fail_on_service_exit
+      syncSupervisePolicyPresetFromFlags()
+      supervisePolicyHydrating = false
+    } catch {
+      supervisePolicyHydrating = false
+    }
+  }
+
   function applySupervisePolicyPreset(preset: SupervisePolicyPreset) {
     if (preset === 'custom') {
       return
@@ -788,37 +828,62 @@
     if (preset === 'strict') {
       superviseFailOnParseError = true
       superviseFailOnServiceExit = true
+      if (!supervisePolicyHydrating) {
+        persistSupervisePolicy()
+      }
       return
     }
 
     if (preset === 'balanced') {
       superviseFailOnParseError = false
       superviseFailOnServiceExit = true
+      if (!supervisePolicyHydrating) {
+        persistSupervisePolicy()
+      }
       return
     }
 
     superviseFailOnParseError = false
     superviseFailOnServiceExit = false
+    if (!supervisePolicyHydrating) {
+      persistSupervisePolicy()
+    }
   }
 
   function syncSupervisePolicyPresetFromFlags() {
     if (superviseFailOnParseError && superviseFailOnServiceExit) {
       supervisePolicyPreset = 'strict'
+      if (!supervisePolicyHydrating) {
+        persistSupervisePolicy()
+      }
       return
     }
 
     if (!superviseFailOnParseError && superviseFailOnServiceExit) {
       supervisePolicyPreset = 'balanced'
+      if (!supervisePolicyHydrating) {
+        persistSupervisePolicy()
+      }
       return
     }
 
     if (!superviseFailOnParseError && !superviseFailOnServiceExit) {
       supervisePolicyPreset = 'observe'
+      if (!supervisePolicyHydrating) {
+        persistSupervisePolicy()
+      }
       return
     }
 
     supervisePolicyPreset = 'custom'
+    if (!supervisePolicyHydrating) {
+      persistSupervisePolicy()
+    }
   }
+
+  onMount(() => {
+    restoreSupervisePolicy()
+  })
 
   function selectObject(index: number) {
     selectedObjectIndex = index

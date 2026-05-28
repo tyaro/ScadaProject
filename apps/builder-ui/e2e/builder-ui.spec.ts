@@ -502,3 +502,17 @@ test('applies supervise policy preset selection', async ({ page }) => {
     'preset=balanced flagged_issues=0 raw_issues=2 exited_total=0 started_false_total=0'
   )
 })
+
+test('persists supervise policy across page reload', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByTestId('supervise-policy-preset-select').selectOption('observe')
+  await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).not.toBeChecked()
+
+  await page.reload()
+
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('observe')
+  await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).not.toBeChecked()
+})
