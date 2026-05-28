@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::{fs, io};
 
 use tauri::Manager;
@@ -26,7 +27,7 @@ struct SuperviseLogSummaryService {
 }
 
 #[tauri::command]
-fn pick_screen_relative_path(
+async fn pick_screen_relative_path(
     app: tauri::AppHandle,
     initial_path: Option<String>,
 ) -> Result<PickScreenRelativePathResult, String> {
@@ -49,7 +50,17 @@ fn pick_screen_relative_path(
         }
     }
 
-    let Some(picked_file) = picker.blocking_pick_file() else {
+    let (pick_tx, pick_rx) = mpsc::channel::<Option<FilePath>>();
+    picker.pick_file(move |picked_file| {
+        let _ = pick_tx.send(picked_file);
+    });
+
+    let picked_file = tauri::async_runtime::spawn_blocking(move || pick_rx.recv())
+        .await
+        .map_err(|error| format!("wait picker result: {error}"))?
+        .map_err(|error| format!("receive picker result: {error}"))?;
+
+    let Some(picked_file) = picked_file else {
         return Ok(PickScreenRelativePathResult::cancelled());
     };
 

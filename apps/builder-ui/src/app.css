@@ -348,6 +348,11 @@ button:focus {
   line-height: 1.35;
 }
 
+.io-status-row {
+  margin-top: 16px;
+  background: rgba(255, 248, 238, 0.9);
+}
+
 .hint-list {
   margin: 16px 0 0;
   padding: 0;

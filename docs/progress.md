@@ -508,6 +508,9 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run test:e2e`: 成功（15 passed、`Source: default/url/localStorage` 表示回帰を含む）
 - `cd apps/builder-ui && npm run check`: 成功（policy applied timestamp バッジ追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（15 passed、`Applied: <ISO>` 表示回帰を含む）
+- `docs/builder_ui_tauri_runbook.md` 5.1（正常選択）手動検証: 成功（`config/screens/mock-main.screen.json` 選択で Save As 更新と `Selected ...` 表示を確認）
+- `docs/builder_ui_tauri_runbook.md` 5.2（選択キャンセル）手動検証: 成功（Save As 非変更と `File selection cancelled` 表示を確認）
+- `docs/builder_ui_tauri_runbook.md` 5.3（不正パス拒否）手動検証: 成功（不正値非上書きと `Path selection failed: ...` 表示を確認）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

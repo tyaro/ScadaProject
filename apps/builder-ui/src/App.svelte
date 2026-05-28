@@ -1359,11 +1359,15 @@
         </div>
       {/if}
 
+      <div class="result-row io-status-row">
+        <span>I/O Status</span>
+        <code data-testid="io-status">{ioStatus}</code>
+      </div>
+
       <ul class="hint-list">
         <li>`known_code=true` のときはテンプレート文言を表示します。</li>
         <li>未知コードは `user_message` に生エラーを残し、UIが最低限の原因を表示できます。</li>
         <li>`path` が `object` / `property` を含むときは、右側の Screen Object Editor で該当フォームへ移動します。</li>
-        <li data-testid="io-status">{ioStatus}</li>
       </ul>
     </section>
 
