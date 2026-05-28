@@ -440,6 +440,7 @@ Runtime API境界テストを強化
 - `GH_PAGER=cat gh run view --job 78225631049 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Standard Checks）
 - `GH_PAGER=cat gh run view --job 78225631008 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Bind-Dependent Checks）
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 5 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26555430616` と `26555527885` が `push/completed/success` で確定）
+- `GH_PAGER=cat gh run list --workflow ci.yml --limit 5 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26555752127` が現在HEAD `142729b` に対して `push/completed/success` で確定）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
