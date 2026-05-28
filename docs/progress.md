@@ -281,6 +281,9 @@ Runtime API境界テストを強化
   - src-tauri unit test を6ケースへ拡張し、`initial_path` の有効/無効境界（traversal、absolute path、prefix不一致）を固定化した
   - `.github/workflows/ci.yml` の `workflow_dispatch` に `run_builder_ui_e2e` 入力を追加し、必要時に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E をクラウド実行できるようにした
   - CIジョブに `apps/builder-ui` の `npm ci` を追加し、`check_local_ci.sh` の Builder UI check/src-tauri check をGitHub Actionsでも安定実行できるようにした
+  - `.github/workflows/ci.yml` の Standard/Bind-Dependent 両ジョブに Tauri Linux 依存（`libglib2.0-dev` / `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` など）の導入ステップを追加し、`src-tauri` チェックの `gobject-2.0` 解決失敗を防止した
+  - `scripts/check_local_ci.sh` に `run_with_timeout` を追加し、Builder UI E2E / Runtime UI E2E / bind依存テストをタイムアウト付きで実行するようにして、クラウド実行の無制限待機を防止した
+  - `crates/preview-runtime/src/lib.rs` のテスト用screen定義ファイル名に `UNIX_EPOCH` ナノ秒サフィックスを導入し、ignoredテスト並列実行時の一時ファイル衝突によるハングを回避した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -415,6 +418,16 @@ Runtime API境界テストを強化
 - Local Previewのservice-configはBroker、Tag Server、Driver Manager、Preview Runtimeの常駐確認済み。Builder APIとMock Driver単体プロセスはまだスケルトン終了するため、フェーズ1で必要なものから常駐化する。
 
 ## 最新検証
+
+- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 実行（Run `26548677950`）
+- `GH_PAGER=cat gh run view --job 78206029295 --log-failed`: 失敗原因を確認（`cargo fmt --check` 差分）
+- `rustup run stable cargo fmt && rustup run stable cargo fmt --check`: 成功
+- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 実行（Run `26548725326`）
+- `GH_PAGER=cat gh run view --job 78206174894 --log`: 失敗原因を確認（`gobject-2.0` / `glib-2.0` 未解決）
+- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 実行（Run `26548888508`、`Run bind-dependent local CI checks` 実行中にキャンセル）
+- `cargo test -p preview-runtime runtime_api_returns_bad_gateway_when_snapshot_http_status_line_is_missing -- --ignored`: 成功
+- `cargo test -p preview-runtime -- --ignored`: 成功（20 passed）
+- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 成功（Run `26549909112`、Standard 4m18s / Bind-Dependent 5m16s）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
