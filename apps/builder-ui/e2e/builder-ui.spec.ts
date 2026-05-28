@@ -310,8 +310,36 @@ test('uses tauri picker result for save-as path', async ({ page }) => {
   await expect(page.getByTestId('pick-save-as-path-button')).toContainText('Pick via Tauri')
   await page.getByTestId('pick-save-as-path-button').click()
 
+  await expect(page.getByTestId('io-status-row')).toContainText('I/O Status')
   await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/picked/by-tauri.screen.json')
   await expect(page.getByTestId('io-status')).toContainText('Selected config/screens/picked/by-tauri.screen.json')
+})
+
+test('shows cancelled status when tauri picker is cancelled', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async (command: string) => {
+          if (command !== 'pick_screen_relative_path') {
+            throw new Error(`unexpected command: ${command}`)
+          }
+
+          return {
+            cancelled: true,
+            relative_path: null,
+          }
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+  await page.getByTestId('save-as-path-field').fill('config/screens/before-cancel.screen.json')
+  await page.getByTestId('pick-save-as-path-button').click()
+
+  await expect(page.getByTestId('save-as-path-field')).toHaveValue('config/screens/before-cancel.screen.json')
+  await expect(page.getByTestId('io-status-row')).toContainText('I/O Status')
+  await expect(page.getByTestId('io-status')).toContainText('File selection cancelled')
 })
 
 test('uses legacy tauri invoke path for save-as picker', async ({ page }) => {

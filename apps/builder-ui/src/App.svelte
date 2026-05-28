@@ -1359,7 +1359,7 @@
         </div>
       {/if}
 
-      <div class="result-row io-status-row">
+      <div class="result-row io-status-row" data-testid="io-status-row">
         <span>I/O Status</span>
         <code data-testid="io-status">{ioStatus}</code>
       </div>
