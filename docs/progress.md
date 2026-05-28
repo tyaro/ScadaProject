@@ -274,6 +274,7 @@ Runtime API境界テストを強化
   - src-tauri へ workspace marker 推定テスト（markers有/無）を追加し、環境差による project root 推定失敗を検出しやすくした
   - `apps/builder-ui/package.json` に `tauri:dev:project` を追加し、`SCADA_PROJECT_ROOT` を明示した起動経路を用意した
   - `scripts/check_local_ci.sh` に `builder-ui src-tauri check` と `builder-ui src-tauri unit tests` を追加し、ローカルCI入口で native shell の回帰も同時に検知できるようにした
+  - `docs/builder_ui_tauri_runbook.md` を追加し、native picker（成功/キャンセル/不正パス）の手動検証手順を固定化した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -383,7 +384,7 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. `docs/scada_basic_design.md` の横断I/F定義に沿って、src-tauri 生成後に `pick_screen_relative_path` command を実装し、内部で `tauri-shell` の共通正規化ロジックを呼ぶ配線へ置き換える。
+1. `docs/builder_ui_tauri_runbook.md` の手順で native picker を手動検証し、実機での挙動差分を洗い出す。
 2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
 
 ## フェーズ0完了条件棚卸し
