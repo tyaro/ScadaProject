@@ -401,7 +401,7 @@ test('loads supervise log summary through tauri bridge', async ({ page }) => {
   await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
   await expect(page.getByTestId('supervise-summary-counts-row')).toContainText('cycle=3 final=1 parse_errors=0')
   await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
-    'flagged_issues=1 raw_issues=1 exited_total=1 started_false_total=0'
+    'preset=strict flagged_issues=1 raw_issues=1 exited_total=1 started_false_total=0'
   )
   await expect(page.getByTestId('supervise-summary-services-list')).toContainText(
     'tag-server: lines=10 exited=1 started_false=0'
@@ -445,11 +445,60 @@ test('re-evaluates supervise summary health by fail policy toggles', async ({ pa
   await page.goto('/')
   await page.getByTestId('load-supervise-summary-button').click()
 
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('strict')
   await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
   await page.getByTestId('supervise-fail-service-exit-checkbox').uncheck()
 
+  await expect(page.getByTestId('supervise-policy-preset-select')).toHaveValue('custom')
   await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Healthy')
   await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
-    'flagged_issues=0 raw_issues=1 exited_total=1 started_false_total=0'
+    'preset=custom flagged_issues=0 raw_issues=1 exited_total=1 started_false_total=0'
+  )
+})
+
+test('applies supervise policy preset selection', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async (command: string) => {
+          if (command === 'read_supervise_log_summary') {
+            return {
+              cycle_summaries: 1,
+              final_summaries: 1,
+              parse_errors: 2,
+              services: [
+                {
+                  service: 'tag-server',
+                  lines: 5,
+                  exited: 0,
+                  started_false: 0,
+                },
+              ],
+            }
+          }
+
+          if (command === 'pick_screen_relative_path') {
+            return {
+              cancelled: true,
+              relative_path: null,
+            }
+          }
+
+          throw new Error(`unexpected command: ${command}`)
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+  await page.getByTestId('load-supervise-summary-button').click()
+
+  await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Issue detected')
+  await page.getByTestId('supervise-policy-preset-select').selectOption('balanced')
+  await expect(page.getByTestId('supervise-fail-parse-checkbox')).not.toBeChecked()
+  await expect(page.getByTestId('supervise-fail-service-exit-checkbox')).toBeChecked()
+  await expect(page.getByTestId('supervise-summary-health-badge')).toHaveText('Healthy')
+  await expect(page.getByTestId('supervise-summary-issues-row')).toContainText(
+    'preset=balanced flagged_issues=0 raw_issues=2 exited_total=0 started_false_total=0'
   )
 })

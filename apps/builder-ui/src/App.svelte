@@ -54,6 +54,8 @@
     object_states: unknown[]
   }
 
+  type SupervisePolicyPreset = 'strict' | 'balanced' | 'observe' | 'custom'
+
   const sampleKnownError =
     "code=MODIFY_RULE_CONDITION_BETWEEN_REQUIRES_MIN_MAX path=object=pump-001 property=color detail=op 'between' requires min and max"
   const sampleUnknownError =
@@ -147,6 +149,7 @@
   let superviseSummary = $state<SuperviseLogSummary | null>(null)
   let superviseSummaryStatus = $state('No supervise log summary loaded')
   let superviseSummaryLoading = $state(false)
+  let supervisePolicyPreset = $state<SupervisePolicyPreset>('strict')
   let superviseFailOnParseError = $state(true)
   let superviseFailOnServiceExit = $state(true)
   let objectField: HTMLInputElement | null = null
@@ -776,6 +779,47 @@
     return superviseSummaryFlaggedIssueCount(summary) > 0
   }
 
+  function applySupervisePolicyPreset(preset: SupervisePolicyPreset) {
+    if (preset === 'custom') {
+      return
+    }
+
+    supervisePolicyPreset = preset
+    if (preset === 'strict') {
+      superviseFailOnParseError = true
+      superviseFailOnServiceExit = true
+      return
+    }
+
+    if (preset === 'balanced') {
+      superviseFailOnParseError = false
+      superviseFailOnServiceExit = true
+      return
+    }
+
+    superviseFailOnParseError = false
+    superviseFailOnServiceExit = false
+  }
+
+  function syncSupervisePolicyPresetFromFlags() {
+    if (superviseFailOnParseError && superviseFailOnServiceExit) {
+      supervisePolicyPreset = 'strict'
+      return
+    }
+
+    if (!superviseFailOnParseError && superviseFailOnServiceExit) {
+      supervisePolicyPreset = 'balanced'
+      return
+    }
+
+    if (!superviseFailOnParseError && !superviseFailOnServiceExit) {
+      supervisePolicyPreset = 'observe'
+      return
+    }
+
+    supervisePolicyPreset = 'custom'
+  }
+
   function selectObject(index: number) {
     selectedObjectIndex = index
     selectedRuleIndex = 0
@@ -1038,13 +1082,36 @@
             <span>Log Directory</span>
             <input data-testid="supervise-log-dir-field" bind:value={superviseLogDir} type="text" />
           </label>
+          <label class="field">
+            <span>Policy Preset</span>
+            <select
+              data-testid="supervise-policy-preset-select"
+              bind:value={supervisePolicyPreset}
+              onchange={() => applySupervisePolicyPreset(supervisePolicyPreset)}
+            >
+              <option value="strict">strict (parse + service exit)</option>
+              <option value="balanced">balanced (service exit only)</option>
+              <option value="observe">observe (no fail conditions)</option>
+              <option value="custom" disabled>custom (manual)</option>
+            </select>
+          </label>
           <div class="supervise-summary-toggles" data-testid="supervise-summary-policy-row">
             <label>
-              <input data-testid="supervise-fail-parse-checkbox" bind:checked={superviseFailOnParseError} type="checkbox" />
+              <input
+                data-testid="supervise-fail-parse-checkbox"
+                bind:checked={superviseFailOnParseError}
+                type="checkbox"
+                onchange={syncSupervisePolicyPresetFromFlags}
+              />
               fail on parse error
             </label>
             <label>
-              <input data-testid="supervise-fail-service-exit-checkbox" bind:checked={superviseFailOnServiceExit} type="checkbox" />
+              <input
+                data-testid="supervise-fail-service-exit-checkbox"
+                bind:checked={superviseFailOnServiceExit}
+                type="checkbox"
+                onchange={syncSupervisePolicyPresetFromFlags}
+              />
               fail on service exit
             </label>
           </div>
@@ -1073,7 +1140,7 @@
             <div class="result-row compact project-path-row" data-testid="supervise-summary-issues-row">
               <span>Health</span>
               <code>
-                flagged_issues={superviseSummaryFlaggedIssueCount(superviseSummary)} raw_issues={superviseSummaryIssueCount(superviseSummary)} exited_total={superviseSummary.services.reduce((total, service) => total + service.exited, 0)} started_false_total={superviseSummary.services.reduce((total, service) => total + service.started_false, 0)}
+                preset={supervisePolicyPreset} flagged_issues={superviseSummaryFlaggedIssueCount(superviseSummary)} raw_issues={superviseSummaryIssueCount(superviseSummary)} exited_total={superviseSummary.services.reduce((total, service) => total + service.exited, 0)} started_false_total={superviseSummary.services.reduce((total, service) => total + service.started_false, 0)}
               </code>
             </div>
             <ul class="hint-list" data-testid="supervise-summary-services-list">
