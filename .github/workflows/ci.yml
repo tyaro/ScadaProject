@@ -35,6 +35,14 @@ on:
         options:
           - "false"
           - "true"
+      run_tauri_shell_exhausted_restart_test:
+        description: "Run tauri-shell exhausted-restart ignored test"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   standard:
@@ -148,3 +156,18 @@ jobs:
             /tmp/tag-server-mqtt-resync.log
             apps/runtime-ui/test-results
           if-no-files-found: ignore
+
+  tauri-shell-exhausted-restart-monitor:
+    name: Tauri Shell Exhausted-Restart Monitor
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_tauri_shell_exhausted_restart_test == 'true')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable
+        run: rustup update stable && rustup default stable
+
+      - name: Run exhausted-restart ignored test
+        run: cargo test -p tauri-shell --test supervise_loop_reset supervise_loop_fails_when_restart_is_exhausted_with_fail_flag -- --ignored
