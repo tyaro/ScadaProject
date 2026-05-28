@@ -436,6 +436,9 @@ Runtime API境界テストを強化
 - `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 削除後）
 - `GH_PAGER=cat gh run watch 26555040435 --exit-status`: 成功（`ci: drop node24 force override after action upgrades`）
 - `GH_PAGER=cat gh run view --job 78225014793 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（強制オーバーライド削除後も再発なし）
+- `GH_PAGER=cat gh run watch 26555253420 --exit-status`: 成功（`workflow_dispatch`, Standard 3m56s / Bind-Dependent 4m58s）
+- `GH_PAGER=cat gh run view --job 78225631049 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Standard Checks）
+- `GH_PAGER=cat gh run view --job 78225631008 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Bind-Dependent Checks）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
