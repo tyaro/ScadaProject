@@ -250,3 +250,70 @@ fn supervise_loop_writes_persistent_logs_when_log_dir_is_set() {
         log_dir.display()
     );
 }
+
+#[test]
+fn supervise_log_summary_can_emit_json() {
+    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
+    let bin_dir = tauri_shell_bin
+        .parent()
+        .expect("tauri-shell binary parent")
+        .to_path_buf();
+    let log_dir = std::env::temp_dir().join(format!(
+        "tauri-shell-supervise-summary-json-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_millis()
+    ));
+
+    let supervise_output = Command::new(&tauri_shell_bin)
+        .arg("--supervise-loop")
+        .arg("--bin-dir")
+        .arg(&bin_dir)
+        .arg("--supervise-interval-ms")
+        .arg("100")
+        .arg("--supervise-cycles")
+        .arg("1")
+        .arg("--supervise-log-dir")
+        .arg(&log_dir)
+        .output()
+        .expect("run tauri-shell supervise-loop with log dir");
+
+    assert!(
+        supervise_output.status.success(),
+        "tauri-shell should succeed with supervise log dir\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&supervise_output.stdout),
+        String::from_utf8_lossy(&supervise_output.stderr)
+    );
+
+    let summary_output = Command::new(&tauri_shell_bin)
+        .arg("--supervise-log-summary")
+        .arg("--supervise-log-dir")
+        .arg(&log_dir)
+        .arg("--supervise-log-summary-json")
+        .output()
+        .expect("run tauri-shell supervise-log-summary json");
+
+    let _ = fs::remove_dir_all(&log_dir);
+
+    assert!(
+        summary_output.status.success(),
+        "tauri-shell should succeed with supervise-log-summary-json\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&summary_output.stdout),
+        String::from_utf8_lossy(&summary_output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&summary_output.stdout);
+    let value: serde_json::Value = serde_json::from_str(stdout.trim()).expect("parse json output");
+    assert!(
+        value.get("cycle_summaries").and_then(|v| v.as_u64()).is_some(),
+        "missing cycle_summaries in json output:\n{}",
+        stdout
+    );
+    assert!(
+        value.get("services").and_then(|v| v.as_array()).is_some(),
+        "missing services array in json output:\n{}",
+        stdout
+    );
+}

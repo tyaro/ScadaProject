@@ -199,6 +199,8 @@ fn main() {
         return;
     }
     if args.iter().any(|arg| arg == "--supervise-log-summary") {
+        let supervise_log_summary_json =
+            args.iter().any(|arg| arg == "--supervise-log-summary-json");
         let supervise_log_dir = match arg_value(&args, "--supervise-log-dir") {
             Some(path) => PathBuf::from(path),
             None => {
@@ -215,18 +217,22 @@ fn main() {
                 std::process::exit(1);
             }
         };
-        println!(
-            "summary dir={} cycle_summaries={} final_summaries={} parse_errors={}",
-            supervise_log_dir.display(),
-            summary.cycle_summaries,
-            summary.final_summaries,
-            summary.parse_errors
-        );
-        for service in summary.services {
+        if supervise_log_summary_json {
+            println!("{}", serde_json::to_string(&summary).expect("serialize summary"));
+        } else {
             println!(
-                "service={} lines={} exited={} started_false={}",
-                service.service, service.lines, service.exited, service.started_false
+                "summary dir={} cycle_summaries={} final_summaries={} parse_errors={}",
+                supervise_log_dir.display(),
+                summary.cycle_summaries,
+                summary.final_summaries,
+                summary.parse_errors
             );
+            for service in summary.services {
+                println!(
+                    "service={} lines={} exited={} started_false={}",
+                    service.service, service.lines, service.exited, service.started_false
+                );
+            }
         }
         return;
     }
@@ -266,8 +272,11 @@ supervise-loop:
   --supervise-fail-on-start-error     exit non-zero if any service start fails
   --supervise-fail-on-exhausted-restart
                                       exit non-zero if restart attempts are exhausted
-    --supervise-log-summary --supervise-log-dir <path>
-                                                                            summarize persisted supervise logs
+
+supervise-log-summary:
+    --supervise-log-summary
+    --supervise-log-dir <path>          read persisted supervise logs from directory
+    --supervise-log-summary-json        emit log summary as one JSON object
 
 service-config:
   --service-config <path>             schema_version must be {}
@@ -740,7 +749,7 @@ fn append_line(path: &Path, line: &str) -> Result<(), String> {
     writeln!(file, "{line}").map_err(|error| format!("write {}: {error}", path.display()))
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
 struct SuperviseLogSummary {
     cycle_summaries: u64,
     final_summaries: u64,
@@ -748,7 +757,7 @@ struct SuperviseLogSummary {
     services: Vec<ServiceLogSummary>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
 struct ServiceLogSummary {
     service: String,
     lines: u64,
