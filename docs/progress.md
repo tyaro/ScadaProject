@@ -271,6 +271,7 @@ Runtime API境界テストを強化
   - URL query `?supervisePolicy=<strict|balanced|observe>` の読み書きを追加し、共有リンクからの初期判定切替と、`custom` 化時のquery自動クリアを実装した
   - `supervisePolicy` query が有効な間だけ `URL override active` バッジを表示し、通常起動（queryなし）では表示しないようにして、URL優先が適用中かを判別しやすくした
   - Supervisor policy のソース表示（`Source: url | localStorage | default`）を追加し、起動時・手動変更後の有効設定の由来を画面上で追跡できるようにした
+  - `Applied: <ISO timestamp>` バッジを追加し、policy が最後に適用された時刻を source 表示と並べて確認できるようにした
   - health 表示を `flagged_issues`（トグル反映後）と `raw_issues`（生集計）に分離し、判定ルールと実測値を同時に追えるようにした
   - `apps/builder-ui` の E2E を15ケースへ拡張し、Tauri bridge経由の supervise summary 表示、policy toggle再評価、policy preset適用、policy永続化、URL query連携、policy source表示回帰を固定化した
   - `crates/tauri-shell` に `normalize_relative_screen_path` / `is_valid_screen_relative_path` を追加し、`config/screens/*.screen.json` 制約と project root 外パス拒否を共通ロジックとして固定化した
@@ -505,6 +506,8 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run test:e2e`: 成功（14 passed、query有効時バッジ表示/ custom化時バッジ非表示回帰を含む）
 - `cd apps/builder-ui && npm run check`: 成功（policy source 表示追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（15 passed、`Source: default/url/localStorage` 表示回帰を含む）
+- `cd apps/builder-ui && npm run check`: 成功（policy applied timestamp バッジ追加後）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（15 passed、`Applied: <ISO>` 表示回帰を含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

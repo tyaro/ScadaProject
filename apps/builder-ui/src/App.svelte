@@ -158,6 +158,7 @@
   let supervisePolicyHydrating = false
   let supervisePolicyUrlOverrideActive = $state(false)
   let supervisePolicySource = $state<SupervisePolicySource>('default')
+  let supervisePolicyAppliedAt = $state<string | null>(null)
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -785,6 +786,10 @@
     return superviseSummaryFlaggedIssueCount(summary) > 0
   }
 
+  function markSupervisePolicyApplied() {
+    supervisePolicyAppliedAt = new Date().toISOString()
+  }
+
   function persistSupervisePolicy() {
     try {
       localStorage.setItem(
@@ -867,6 +872,7 @@
     if (preset === 'strict') {
       superviseFailOnParseError = true
       superviseFailOnServiceExit = true
+      markSupervisePolicyApplied()
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
         persistSupervisePolicyQuery()
@@ -877,6 +883,7 @@
     if (preset === 'balanced') {
       superviseFailOnParseError = false
       superviseFailOnServiceExit = true
+      markSupervisePolicyApplied()
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
         persistSupervisePolicyQuery()
@@ -886,6 +893,7 @@
 
     superviseFailOnParseError = false
     superviseFailOnServiceExit = false
+    markSupervisePolicyApplied()
     if (!supervisePolicyHydrating) {
       persistSupervisePolicy()
       persistSupervisePolicyQuery()
@@ -895,6 +903,7 @@
   function syncSupervisePolicyPresetFromFlags() {
     if (superviseFailOnParseError && superviseFailOnServiceExit) {
       supervisePolicyPreset = 'strict'
+      markSupervisePolicyApplied()
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
         persistSupervisePolicyQuery()
@@ -904,6 +913,7 @@
 
     if (!superviseFailOnParseError && superviseFailOnServiceExit) {
       supervisePolicyPreset = 'balanced'
+      markSupervisePolicyApplied()
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
         persistSupervisePolicyQuery()
@@ -913,6 +923,7 @@
 
     if (!superviseFailOnParseError && !superviseFailOnServiceExit) {
       supervisePolicyPreset = 'observe'
+      markSupervisePolicyApplied()
       if (!supervisePolicyHydrating) {
         persistSupervisePolicy()
         persistSupervisePolicyQuery()
@@ -921,6 +932,7 @@
     }
 
     supervisePolicyPreset = 'custom'
+    markSupervisePolicyApplied()
     if (!supervisePolicyHydrating) {
       persistSupervisePolicy()
       persistSupervisePolicyQuery()
@@ -944,6 +956,7 @@
     const restored = restoreSupervisePolicy()
     if (!restored) {
       supervisePolicySource = 'default'
+      markSupervisePolicyApplied()
     }
   })
 
@@ -1224,6 +1237,9 @@
           </label>
           <span class="chip muted" data-testid="supervise-policy-source-badge">
             Source: {supervisePolicySource}
+          </span>
+          <span class="chip muted" data-testid="supervise-policy-applied-at-badge">
+            Applied: {supervisePolicyAppliedAt ?? 'n/a'}
           </span>
           {#if supervisePolicyUrlOverrideActive}
             <span class="chip warn" data-testid="supervise-policy-url-override-badge">URL override active</span>
