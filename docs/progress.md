@@ -471,6 +471,10 @@ Runtime API境界テストを強化
 - `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（6 passed、native picker関連テスト）
 - `cargo fmt`: 成功（`check_local_ci.sh` の `fmt --check` 差分を解消）
 - `RUN_SUPERVISE_LOG_CHECKS=1 RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 RUN_BUILDER_UI_E2E=0 scripts/check_local_ci.sh`: 成功（fmt + Rust主要crate + Builder/Runtime UI check + supervise-log-summary checks）
+- `gh workflow run ci.yml -f run_bind_tests=false -f run_builder_ui_e2e=false -f run_supervise_log_checks=true`: 実行（Run `26558474280`）
+- `GH_PAGER=cat gh run view 26558474280 --json status,conclusion,event,headSha,jobs,url`: 成功（`workflow_dispatch/completed/success`, Standard Checks success, Bind-Dependent skipped を確認）
+- `GH_PAGER=cat gh run view --job 78235525649 --log | grep -n "RUN_SUPERVISE_LOG_CHECKS\|tauri-shell supervise-log-summary checks"`: 成功（`RUN_SUPERVISE_LOG_CHECKS: 1` と `== tauri-shell supervise-log-summary checks ==` を確認）
+- `GH_PAGER=cat gh run list --workflow ci.yml --limit 3 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26558474280` と push Run `26558406791` がともに `completed/success` で確定）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
