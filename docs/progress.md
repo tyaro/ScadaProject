@@ -279,6 +279,8 @@ Runtime API境界テストを強化
   - `scripts/check_local_ci.sh` に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E を実行する任意フラグを追加し、必要時に9ケース回帰を標準入口へ組み込めるようにした
   - `apps/builder-ui/src-tauri` に `initial_path` 妥当性ヘルパーを追加し、`config/screens/*.screen.json` 以外は picker 初期値へ採用しないようにした
   - src-tauri unit test を6ケースへ拡張し、`initial_path` の有効/無効境界（traversal、absolute path、prefix不一致）を固定化した
+  - `.github/workflows/ci.yml` の `workflow_dispatch` に `run_builder_ui_e2e` 入力を追加し、必要時に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E をクラウド実行できるようにした
+  - CIジョブに `apps/builder-ui` の `npm ci` を追加し、`check_local_ci.sh` の Builder UI check/src-tauri check をGitHub Actionsでも安定実行できるようにした
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -445,6 +447,7 @@ Runtime API境界テストを強化
 - `bash -n scripts/check_local_ci.sh`: 成功（Builder UI E2Eフラグ追加後）
 - `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（6 passed, initial_path境界テストを含む）
 - `cd apps/builder-ui && npm run check && npm run test:e2e && npm run tauri:check`: 成功
+- `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（workflow_dispatch拡張後）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）

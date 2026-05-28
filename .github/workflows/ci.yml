@@ -16,6 +16,14 @@ on:
         options:
           - "false"
           - "true"
+      run_builder_ui_e2e:
+        description: "Run Builder UI E2E"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   standard:
@@ -33,7 +41,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: apps/runtime-ui/package-lock.json
+          cache-dependency-path: |
+            apps/runtime-ui/package-lock.json
+            apps/builder-ui/package-lock.json
+
+      - name: Install Builder UI dependencies
+        working-directory: apps/builder-ui
+        run: npm ci
 
       - name: Install Runtime UI dependencies
         working-directory: apps/runtime-ui
@@ -58,11 +72,22 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: apps/runtime-ui/package-lock.json
+          cache-dependency-path: |
+            apps/runtime-ui/package-lock.json
+            apps/builder-ui/package-lock.json
+
+      - name: Install Builder UI dependencies
+        working-directory: apps/builder-ui
+        run: npm ci
 
       - name: Install Runtime UI dependencies
         working-directory: apps/runtime-ui
         run: npm ci
+
+      - name: Install Builder UI Playwright browser
+        if: inputs.run_builder_ui_e2e == 'true'
+        working-directory: apps/builder-ui
+        run: npx playwright install --with-deps chromium
 
       - name: Install Playwright browser
         working-directory: apps/runtime-ui
@@ -72,6 +97,7 @@ jobs:
         env:
           RUN_BIND_TESTS: "1"
           RUN_RUNTIME_UI_E2E: "1"
+          RUN_BUILDER_UI_E2E: ${{ inputs.run_builder_ui_e2e == 'true' && '1' || '0' }}
         run: scripts/check_local_ci.sh
 
       - name: Upload bind-dependent logs
