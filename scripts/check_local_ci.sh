@@ -84,6 +84,37 @@ if [[ "$cancelled_json" != "$expected_cancelled" ]]; then
   exit 1
 fi
 
+if [[ "${RUN_SUPERVISE_LOG_CHECKS:-0}" == "1" ]]; then
+  echo "== tauri-shell supervise-log-summary checks =="
+  tmp_log_dir="$(mktemp -d /tmp/tauri-shell-log-summary.XXXXXX)"
+
+  printf '{"type":"cycle_summary"}\n{"type":"final_summary"}\n' >"$tmp_log_dir/supervise-loop.jsonl"
+  printf 'cycle=1 started=true exited=false\n' >"$tmp_log_dir/tag-server.log"
+
+  summary_json="$(cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir "$tmp_log_dir" --supervise-log-summary-json)"
+  if [[ "$summary_json" != *'"cycle_summaries":1'* || "$summary_json" != *'"final_summaries":1'* ]]; then
+    echo "error: unexpected supervise-log-summary json output"
+    echo "actual: $summary_json"
+    rm -rf "$tmp_log_dir"
+    exit 1
+  fi
+
+  printf 'not-json\n' >>"$tmp_log_dir/supervise-loop.jsonl"
+  set +e
+  cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir "$tmp_log_dir" --supervise-log-summary-fail-on-parse-error >/dev/null 2>&1
+  fail_on_parse_exit_code=$?
+  set -e
+  if [[ "$fail_on_parse_exit_code" -eq 0 ]]; then
+    echo "error: expected non-zero exit for --supervise-log-summary-fail-on-parse-error"
+    rm -rf "$tmp_log_dir"
+    exit 1
+  fi
+
+  rm -rf "$tmp_log_dir"
+else
+  echo "skip tauri-shell supervise-log-summary checks (set RUN_SUPERVISE_LOG_CHECKS=1)"
+fi
+
 echo "== builder-ui src-tauri check =="
 (
   cd apps/builder-ui

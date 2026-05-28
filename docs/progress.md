@@ -302,6 +302,7 @@ Runtime API境界テストを強化
   - 既定で `cargo fmt --check` / Rust主要crateテスト / Runtime UI型チェックを実行
   - `RUN_RUNTIME_UI_E2E=1` でPlaywright E2Eを実行
   - `RUN_BIND_TESTS=1` でbind依存のPreview RuntimeテストとMQTT再同期ログ検証を実行
+  - `RUN_SUPERVISE_LOG_CHECKS=1` で `tauri-shell` 永続化監視ログ集計の回帰チェック（JSON出力形 + fail-on-parse-error）を実行
   - Preview RuntimeのTCP listener依存テストは `#[ignore]` に分離し、標準チェックで失敗しないよう整理
 - GitHub Actions CIを追加
   - `.github/workflows/ci.yml` を追加
@@ -411,6 +412,7 @@ Runtime API境界テストを強化
 
 1. `docs/builder_ui_tauri_runbook.md` の手順で native picker を手動検証し、実機での挙動差分を洗い出す。
 2. `RUN_RUNTIME_UI_E2E=1` / `RUN_BIND_TESTS=1` を含む拡張チェックを定期実行し、Builder/Runtime の回帰を早期検知する。
+3. `RUN_SUPERVISE_LOG_CHECKS=1` を定期実行し、監視ログ集計CLIのJSON契約と異常時非0終了の退行を早期検知する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -461,6 +463,8 @@ Runtime API境界テストを強化
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp>`: 成功（`summary dir=... cycle_summaries=1 final_summaries=1 parse_errors=0` と `service=tag-server lines=2 exited=1 started_false=1` を確認）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-json`: 成功（`{"cycle_summaries":1,...,"services":[...]}` 形式のJSON出力を確認）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-fail-on-parse-error`: 期待どおり非0終了（`parse errors detected (1)` と終了コード `1` を確認）
+- `bash -n scripts/check_local_ci.sh`: 成功（`RUN_SUPERVISE_LOG_CHECKS` 分岐追加後）
+- `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-json` + `--supervise-log-summary-fail-on-parse-error`: 成功（JSON出力確認 + fail-on時に終了コード `1` を確認）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
