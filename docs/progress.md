@@ -283,6 +283,7 @@ Runtime API境界テストを強化
   - CIジョブに `apps/builder-ui` の `npm ci` を追加し、`check_local_ci.sh` の Builder UI check/src-tauri check をGitHub Actionsでも安定実行できるようにした
   - `.github/workflows/ci.yml` の Standard/Bind-Dependent 両ジョブに Tauri Linux 依存（`libglib2.0-dev` / `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` など）の導入ステップを追加し、`src-tauri` チェックの `gobject-2.0` 解決失敗を防止した
   - `.github/workflows/ci.yml` の action ランタイムを更新し、`actions/checkout@v6` / `actions/setup-node@v6` / `actions/upload-artifact@v7` へ切り替えて Node 20 非推奨アノテーションの解消に対応した
+  - action 更新後の実行結果を受けて `.github/workflows/ci.yml` の `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` を削除し、強制オーバーライドなしの標準ランタイム運用へ移行した
   - `scripts/check_local_ci.sh` に `run_with_timeout` を追加し、Builder UI E2E / Runtime UI E2E / bind依存テストをタイムアウト付きで実行するようにして、クラウド実行の無制限待機を防止した
   - `crates/preview-runtime/src/lib.rs` のテスト用screen定義ファイル名に `UNIX_EPOCH` ナノ秒サフィックスを導入し、ignoredテスト並列実行時の一時ファイル衝突によるハングを回避した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
@@ -432,6 +433,7 @@ Runtime API境界テストを強化
 - `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（action バージョン更新後）
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 1 --json ...`: 成功（Run `26554175602` が `completed/success`）
 - `GH_PAGER=cat gh run view --job 78222413756 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Node20 非推奨警告が消失）
+- `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（`FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` 削除後）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
