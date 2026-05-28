@@ -53,6 +53,17 @@ jobs:
         working-directory: apps/runtime-ui
         run: npm ci
 
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
       - name: Run standard local CI checks
         run: scripts/check_local_ci.sh
 
@@ -83,6 +94,17 @@ jobs:
       - name: Install Runtime UI dependencies
         working-directory: apps/runtime-ui
         run: npm ci
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Install Builder UI Playwright browser
         if: inputs.run_builder_ui_e2e == 'true'
