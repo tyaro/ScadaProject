@@ -282,6 +282,7 @@ Runtime API境界テストを強化
   - `.github/workflows/ci.yml` の `workflow_dispatch` に `run_builder_ui_e2e` 入力を追加し、必要時に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E をクラウド実行できるようにした
   - CIジョブに `apps/builder-ui` の `npm ci` を追加し、`check_local_ci.sh` の Builder UI check/src-tauri check をGitHub Actionsでも安定実行できるようにした
   - `.github/workflows/ci.yml` の Standard/Bind-Dependent 両ジョブに Tauri Linux 依存（`libglib2.0-dev` / `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` など）の導入ステップを追加し、`src-tauri` チェックの `gobject-2.0` 解決失敗を防止した
+  - `.github/workflows/ci.yml` の action ランタイムを更新し、`actions/checkout@v6` / `actions/setup-node@v6` / `actions/upload-artifact@v7` へ切り替えて Node 20 非推奨アノテーションの解消に対応した
   - `scripts/check_local_ci.sh` に `run_with_timeout` を追加し、Builder UI E2E / Runtime UI E2E / bind依存テストをタイムアウト付きで実行するようにして、クラウド実行の無制限待機を防止した
   - `crates/preview-runtime/src/lib.rs` のテスト用screen定義ファイル名に `UNIX_EPOCH` ナノ秒サフィックスを導入し、ignoredテスト並列実行時の一時ファイル衝突によるハングを回避した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
@@ -428,6 +429,7 @@ Runtime API境界テストを強化
 - `cargo test -p preview-runtime runtime_api_returns_bad_gateway_when_snapshot_http_status_line_is_missing -- --ignored`: 成功
 - `cargo test -p preview-runtime -- --ignored`: 成功（20 passed）
 - `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 成功（Run `26549909112`、Standard 4m18s / Bind-Dependent 5m16s）
+- `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（action バージョン更新後）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
