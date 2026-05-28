@@ -276,6 +276,9 @@ Runtime API境界テストを強化
   - `scripts/check_local_ci.sh` に `builder-ui src-tauri check` と `builder-ui src-tauri unit tests` を追加し、ローカルCI入口で native shell の回帰も同時に検知できるようにした
   - `docs/builder_ui_tauri_runbook.md` を追加し、native picker（成功/キャンセル/不正パス）の手動検証手順を固定化した
   - `apps/builder-ui` の E2E に `__TAURI__.invoke`（legacy）経路と tauri picker 不正レスポンス拒否ケースを追加し、invoke実装差と契約逸脱の回帰を固定化した
+  - `scripts/check_local_ci.sh` に `RUN_BUILDER_UI_E2E=1` で Builder UI E2E を実行する任意フラグを追加し、必要時に9ケース回帰を標準入口へ組み込めるようにした
+  - `apps/builder-ui/src-tauri` に `initial_path` 妥当性ヘルパーを追加し、`config/screens/*.screen.json` 以外は picker 初期値へ採用しないようにした
+  - src-tauri unit test を6ケースへ拡張し、`initial_path` の有効/無効境界（traversal、absolute path、prefix不一致）を固定化した
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -439,6 +442,9 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run tauri:check && cd ../.. && cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（`check_local_ci.sh` 追加分の実行確認）
 - `cd apps/builder-ui && npm run check`: 成功（tauri invoke E2E拡張後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（9 passed, legacy invoke と不正契約拒否ケースを含む）
+- `bash -n scripts/check_local_ci.sh`: 成功（Builder UI E2Eフラグ追加後）
+- `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（6 passed, initial_path境界テストを含む）
+- `cd apps/builder-ui && npm run check && npm run test:e2e && npm run tauri:check`: 成功
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）

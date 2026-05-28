@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, FilePath};
-use tauri_shell::{normalize_relative_screen_path, PickScreenRelativePathResult};
+use tauri_shell::{
+    is_valid_screen_relative_path, normalize_relative_screen_path, PickScreenRelativePathResult,
+};
 
 #[tauri::command]
 fn pick_screen_relative_path(
@@ -19,8 +21,7 @@ fn pick_screen_relative_path(
         .add_filter("SCADA Screen JSON", &["json"])
         .set_title("Select screen definition");
 
-    if let Some(initial) = initial_path {
-        let initial_absolute = project_root.join(initial);
+    if let Some(initial_absolute) = initial_picker_absolute_path(&project_root, initial_path.as_deref()) {
         if let Some(directory) = initial_absolute.parent() {
             picker = picker.set_directory(directory);
         }
@@ -97,6 +98,14 @@ fn dialog_file_path_to_path_buf(path: FilePath) -> Option<PathBuf> {
     }
 }
 
+fn initial_picker_absolute_path(project_root: &Path, initial_path: Option<&str>) -> Option<PathBuf> {
+    let raw = initial_path?.trim();
+    if !is_valid_screen_relative_path(raw) {
+        return None;
+    }
+    Some(project_root.join(raw))
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -162,5 +171,25 @@ mod tests {
         assert_eq!(None, inferred);
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn initial_picker_absolute_path_accepts_valid_relative_path() {
+        let root = Path::new("/tmp/scada-project");
+        let resolved = initial_picker_absolute_path(root, Some("config/screens/mock-main.screen.json"));
+
+        assert_eq!(
+            Some(Path::new("/tmp/scada-project/config/screens/mock-main.screen.json").to_path_buf()),
+            resolved
+        );
+    }
+
+    #[test]
+    fn initial_picker_absolute_path_rejects_invalid_relative_path() {
+        let root = Path::new("/tmp/scada-project");
+
+        assert_eq!(None, initial_picker_absolute_path(root, Some("../outside.screen.json")));
+        assert_eq!(None, initial_picker_absolute_path(root, Some("/tmp/absolute.screen.json")));
+        assert_eq!(None, initial_picker_absolute_path(root, Some("config/other/mock-main.screen.json")));
     }
 }

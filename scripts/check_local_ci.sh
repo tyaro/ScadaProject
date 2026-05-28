@@ -75,6 +75,22 @@ echo "== builder-ui src-tauri check =="
 echo "== builder-ui src-tauri unit tests =="
 cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml
 
+echo "== builder-ui check =="
+(
+  cd apps/builder-ui
+  npm run check
+)
+
+if [[ "${RUN_BUILDER_UI_E2E:-0}" == "1" ]]; then
+  echo "== builder-ui e2e =="
+  (
+    cd apps/builder-ui
+    npm run test:e2e
+  )
+else
+  echo "skip builder-ui e2e (set RUN_BUILDER_UI_E2E=1)"
+fi
+
 echo "== runtime-ui check =="
 (
   cd apps/runtime-ui
