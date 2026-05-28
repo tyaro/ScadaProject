@@ -308,6 +308,7 @@ Runtime API境界テストを強化
   - `.github/workflows/ci.yml` を追加
   - `push` / `pull_request` では標準チェックを実行
   - `workflow_dispatch` の `run_bind_tests=true` でPlaywright E2Eとbind依存チェックを実行
+  - `workflow_dispatch` の `run_supervise_log_checks=true` で `RUN_SUPERVISE_LOG_CHECKS=1` を渡し、`tauri-shell` 監視ログ集計CLI回帰をクラウド実行できるようにした
   - bind依存チェック失敗時は `/tmp` ログとPlaywright結果をartifact保存
   - `schedule`（毎日 UTC 18:00）で bind依存チェック + Runtime UI E2E + Builder UI E2E を定期実行する自動運用を追加
   - CIジョブの `timeout-minutes` を追加（`Standard Checks: 30`、`Bind-Dependent Checks: 45`）し、異常長時間化の自動停止を固定
@@ -465,6 +466,7 @@ Runtime API境界テストを強化
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-fail-on-parse-error`: 期待どおり非0終了（`parse errors detected (1)` と終了コード `1` を確認）
 - `bash -n scripts/check_local_ci.sh`: 成功（`RUN_SUPERVISE_LOG_CHECKS` 分岐追加後）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-json` + `--supervise-log-summary-fail-on-parse-error`: 成功（JSON出力確認 + fail-on時に終了コード `1` を確認）
+- `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（`run_supervise_log_checks` 追加後）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

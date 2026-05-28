@@ -27,6 +27,14 @@ on:
         options:
           - "false"
           - "true"
+      run_supervise_log_checks:
+        description: "Run tauri-shell supervise log summary checks"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   standard:
@@ -69,6 +77,8 @@ jobs:
             patchelf
 
       - name: Run standard local CI checks
+        env:
+          RUN_SUPERVISE_LOG_CHECKS: ${{ github.event_name == 'workflow_dispatch' && (inputs.run_supervise_log_checks == 'true' && '1' || '0') || '0' }}
         run: scripts/check_local_ci.sh
 
   bind-dependent:
@@ -125,6 +135,7 @@ jobs:
           RUN_BIND_TESTS: "1"
           RUN_RUNTIME_UI_E2E: "1"
           RUN_BUILDER_UI_E2E: ${{ github.event_name == 'schedule' && '1' || (inputs.run_builder_ui_e2e == 'true' && '1' || '0') }}
+          RUN_SUPERVISE_LOG_CHECKS: ${{ github.event_name == 'schedule' && '1' || (inputs.run_supervise_log_checks == 'true' && '1' || '0') }}
         run: scripts/check_local_ci.sh
 
       - name: Upload bind-dependent logs
