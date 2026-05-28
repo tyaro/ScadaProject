@@ -66,6 +66,15 @@ if [[ "$cancelled_json" != "$expected_cancelled" ]]; then
   exit 1
 fi
 
+echo "== builder-ui src-tauri check =="
+(
+  cd apps/builder-ui
+  npm run tauri:check
+)
+
+echo "== builder-ui src-tauri unit tests =="
+cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml
+
 echo "== runtime-ui check =="
 (
   cd apps/runtime-ui

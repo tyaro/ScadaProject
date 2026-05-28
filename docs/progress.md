@@ -273,6 +273,7 @@ Runtime API境界テストを強化
   - `apps/builder-ui/src-tauri` の project root 解決を強化し、`SCADA_PROJECT_ROOT` 優先、`current_dir` 推定、`resource_dir` 推定の順でワークスペースを検出するようにした
   - src-tauri へ workspace marker 推定テスト（markers有/無）を追加し、環境差による project root 推定失敗を検出しやすくした
   - `apps/builder-ui/package.json` に `tauri:dev:project` を追加し、`SCADA_PROJECT_ROOT` を明示した起動経路を用意した
+  - `scripts/check_local_ci.sh` に `builder-ui src-tauri check` と `builder-ui src-tauri unit tests` を追加し、ローカルCI入口で native shell の回帰も同時に検知できるようにした
   - Builder API の HTTP 面を `contracts/openapi/builder.yaml` として独立定義し、`/health` と `POST /api/v1/errors/map` の request/response 契約を明文化した
   - Builder API に `/health` と `POST /api/v1/errors/map` の JSON 応答形を固定する境界テストを追加し、`contracts/openapi/builder.yaml` との乖離を検出しやすくした
   - `config/tauri-shell.services.json` と `config/tauri-shell.services.mosquitto.json` の `builder-api` に `--serve --addr 127.0.0.1:18110` を追加し、Local Preview で Builder UI から接続できるようにした
@@ -432,6 +433,8 @@ Runtime API境界テストを強化
 - `cd apps/builder-ui && npm run tauri:check`: 成功（src-tauri 依存補完後）
 - `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（4 passed, project root 推定テストを含む）
 - `cd apps/builder-ui && npm run check && npm run tauri:check`: 成功（project root 解決強化と `tauri:dev:project` 追加後）
+- `bash -n scripts/check_local_ci.sh`: 成功（src-tauri checks 組み込み後）
+- `cd apps/builder-ui && npm run tauri:check && cd ../.. && cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（`check_local_ci.sh` 追加分の実行確認）
 - `cargo test -p builder-api`: 成功（14 passed）
 - `ruby --disable-gems -e '...builder openapi required-path assertions...'`: 成功（`/api/v1/screens/save-as` を含む）
 - `gh repo create tyaro/ScadaProject --public --source=. --remote=origin --push`: 成功（`https://github.com/tyaro/ScadaProject` 作成 + `origin` 設定 + 初回push）
