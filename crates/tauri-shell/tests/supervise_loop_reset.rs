@@ -307,7 +307,10 @@ fn supervise_log_summary_can_emit_json() {
     let stdout = String::from_utf8_lossy(&summary_output.stdout);
     let value: serde_json::Value = serde_json::from_str(stdout.trim()).expect("parse json output");
     assert!(
-        value.get("cycle_summaries").and_then(|v| v.as_u64()).is_some(),
+        value
+            .get("cycle_summaries")
+            .and_then(|v| v.as_u64())
+            .is_some(),
         "missing cycle_summaries in json output:\n{}",
         stdout
     );

@@ -224,7 +224,10 @@ fn main() {
             }
         };
         if supervise_log_summary_json {
-            println!("{}", serde_json::to_string(&summary).expect("serialize summary"));
+            println!(
+                "{}",
+                serde_json::to_string(&summary).expect("serialize summary")
+            );
         } else {
             println!(
                 "summary dir={} cycle_summaries={} final_summaries={} parse_errors={}",
@@ -813,7 +816,8 @@ fn summarize_supervise_log_dir(dir: &Path) -> Result<SuperviseLogSummary, String
     }
 
     let mut services = Vec::new();
-    let entries = fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
+    let entries =
+        fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|error| format!("read_dir entry {}: {error}", dir.display()))?;
         let path = entry.path();

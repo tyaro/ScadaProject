@@ -467,6 +467,10 @@ Runtime API境界テストを強化
 - `bash -n scripts/check_local_ci.sh`: 成功（`RUN_SUPERVISE_LOG_CHECKS` 分岐追加後）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-json` + `--supervise-log-summary-fail-on-parse-error`: 成功（JSON出力確認 + fail-on時に終了コード `1` を確認）
 - `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（`run_supervise_log_checks` 追加後）
+- `cd apps/builder-ui && npm run check && npm run tauri:check`: 成功（runbook の Fast Pre-Checks）
+- `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（6 passed、native picker関連テスト）
+- `cargo fmt`: 成功（`check_local_ci.sh` の `fmt --check` 差分を解消）
+- `RUN_SUPERVISE_LOG_CHECKS=1 RUN_RUNTIME_UI_E2E=0 RUN_BIND_TESTS=0 RUN_BUILDER_UI_E2E=0 scripts/check_local_ci.sh`: 成功（fmt + Rust主要crate + Builder/Runtime UI check + supervise-log-summary checks）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
