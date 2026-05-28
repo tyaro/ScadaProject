@@ -155,6 +155,7 @@
   let superviseFailOnParseError = $state(true)
   let superviseFailOnServiceExit = $state(true)
   let supervisePolicyHydrating = false
+  let supervisePolicyUrlOverrideActive = $state(false)
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -814,8 +815,10 @@
       const url = new URL(window.location.href)
       if (supervisePolicyPreset === 'custom') {
         url.searchParams.delete(supervisePolicyQueryKey)
+        supervisePolicyUrlOverrideActive = false
       } else {
         url.searchParams.set(supervisePolicyQueryKey, supervisePolicyPreset)
+        supervisePolicyUrlOverrideActive = true
       }
       const nextUrl = `${url.pathname}${url.search}${url.hash}`
       window.history.replaceState({}, '', nextUrl)
@@ -920,6 +923,7 @@
   onMount(() => {
     const policyFromQuery = readSupervisePolicyFromQuery()
     if (policyFromQuery) {
+      supervisePolicyUrlOverrideActive = true
       supervisePolicyHydrating = true
       applySupervisePolicyPreset(policyFromQuery)
       supervisePolicyHydrating = false
@@ -928,8 +932,8 @@
       return
     }
 
+    supervisePolicyUrlOverrideActive = false
     restoreSupervisePolicy()
-    persistSupervisePolicyQuery()
   })
 
   function selectObject(index: number) {
@@ -1207,6 +1211,9 @@
               <option value="custom" disabled>custom (manual)</option>
             </select>
           </label>
+          {#if supervisePolicyUrlOverrideActive}
+            <span class="chip warn" data-testid="supervise-policy-url-override-badge">URL override active</span>
+          {/if}
           <div class="supervise-summary-toggles" data-testid="supervise-summary-policy-row">
             <label>
               <input
