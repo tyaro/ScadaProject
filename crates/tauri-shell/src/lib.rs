@@ -442,7 +442,9 @@ mod tests {
     #[test]
     fn screen_relative_path_validator_rejects_invalid_path() {
         assert!(!is_valid_screen_relative_path(""));
-        assert!(!is_valid_screen_relative_path("config/screens/.screen.json"));
+        assert!(!is_valid_screen_relative_path(
+            "config/screens/.screen.json"
+        ));
         assert!(!is_valid_screen_relative_path(
             "config/screens/mock.main.screen.json"
         ));
@@ -469,7 +471,8 @@ mod tests {
         let project_root = Path::new("/tmp/scada-project");
         let absolute = Path::new("/tmp/other/config/screens/mock-main.screen.json");
 
-        let error = normalize_relative_screen_path(project_root, absolute).expect_err("must reject");
+        let error =
+            normalize_relative_screen_path(project_root, absolute).expect_err("must reject");
 
         assert!(error.contains("outside project root"));
     }

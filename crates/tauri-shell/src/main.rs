@@ -257,7 +257,8 @@ fn pick_screen_relative_path_response(
     let absolute_path = arg_value(args, "--absolute-path")
         .ok_or_else(|| "--absolute-path is required unless --cancel is set".to_string())?;
 
-    let normalized = normalize_relative_screen_path(Path::new(&project_root), Path::new(&absolute_path))?;
+    let normalized =
+        normalize_relative_screen_path(Path::new(&project_root), Path::new(&absolute_path))?;
     Ok(Some(PickScreenRelativePathResult::selected(normalized)))
 }
 
