@@ -198,6 +198,38 @@ fn main() {
         }
         return;
     }
+    if args.iter().any(|arg| arg == "--supervise-log-summary") {
+        let supervise_log_dir = match arg_value(&args, "--supervise-log-dir") {
+            Some(path) => PathBuf::from(path),
+            None => {
+                eprintln!(
+                    "tauri-shell supervise-log-summary failed: --supervise-log-dir is required"
+                );
+                std::process::exit(1);
+            }
+        };
+        let summary = match summarize_supervise_log_dir(&supervise_log_dir) {
+            Ok(summary) => summary,
+            Err(error) => {
+                eprintln!("tauri-shell supervise-log-summary failed: {error}");
+                std::process::exit(1);
+            }
+        };
+        println!(
+            "summary dir={} cycle_summaries={} final_summaries={} parse_errors={}",
+            supervise_log_dir.display(),
+            summary.cycle_summaries,
+            summary.final_summaries,
+            summary.parse_errors
+        );
+        for service in summary.services {
+            println!(
+                "service={} lines={} exited={} started_false={}",
+                service.service, service.lines, service.exited, service.started_false
+            );
+        }
+        return;
+    }
 
     println!("tauri-shell skeleton");
 }
@@ -234,6 +266,8 @@ supervise-loop:
   --supervise-fail-on-start-error     exit non-zero if any service start fails
   --supervise-fail-on-exhausted-restart
                                       exit non-zero if restart attempts are exhausted
+    --supervise-log-summary --supervise-log-dir <path>
+                                                                            summarize persisted supervise logs
 
 service-config:
   --service-config <path>             schema_version must be {}
@@ -706,6 +740,86 @@ fn append_line(path: &Path, line: &str) -> Result<(), String> {
     writeln!(file, "{line}").map_err(|error| format!("write {}: {error}", path.display()))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct SuperviseLogSummary {
+    cycle_summaries: u64,
+    final_summaries: u64,
+    parse_errors: u64,
+    services: Vec<ServiceLogSummary>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ServiceLogSummary {
+    service: String,
+    lines: u64,
+    exited: u64,
+    started_false: u64,
+}
+
+fn summarize_supervise_log_dir(dir: &Path) -> Result<SuperviseLogSummary, String> {
+    let mut cycle_summaries = 0u64;
+    let mut final_summaries = 0u64;
+    let mut parse_errors = 0u64;
+    let summary_path = dir.join("supervise-loop.jsonl");
+    if summary_path.exists() {
+        let raw = fs::read_to_string(&summary_path)
+            .map_err(|error| format!("read {}: {error}", summary_path.display()))?;
+        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+            match serde_json::from_str::<serde_json::Value>(line) {
+                Ok(value) => match value.get("type").and_then(|v| v.as_str()) {
+                    Some("cycle_summary") => {
+                        cycle_summaries = cycle_summaries.saturating_add(1);
+                    }
+                    Some("final_summary") => {
+                        final_summaries = final_summaries.saturating_add(1);
+                    }
+                    _ => {}
+                },
+                Err(_) => {
+                    parse_errors = parse_errors.saturating_add(1);
+                }
+            }
+        }
+    }
+
+    let mut services = Vec::new();
+    let entries = fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| format!("read_dir entry {}: {error}", dir.display()))?;
+        let path = entry.path();
+        if path.file_name().and_then(|name| name.to_str()) == Some("supervise-loop.jsonl") {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("log") {
+            continue;
+        }
+        let raw = fs::read_to_string(&path)
+            .map_err(|error| format!("read {}: {error}", path.display()))?;
+        let lines = raw.lines().filter(|line| !line.trim().is_empty()).count() as u64;
+        let exited = raw.matches("exited=true").count() as u64;
+        let started_false = raw.matches("started=false").count() as u64;
+        let service = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid service log file name: {}", path.display()))?
+            .to_string();
+        services.push(ServiceLogSummary {
+            service,
+            lines,
+            exited,
+            started_false,
+        });
+    }
+    services.sort_by(|a, b| a.service.cmp(&b.service));
+
+    Ok(SuperviseLogSummary {
+        cycle_summaries,
+        final_summaries,
+        parse_errors,
+        services,
+    })
+}
+
 #[derive(Debug, Deserialize)]
 struct ServicePlanFile {
     schema_version: String,
@@ -1009,6 +1123,52 @@ mod tests {
         let error = pick_screen_relative_path_response(&args).expect_err("must fail");
 
         assert!(error.contains("--absolute-path is required"));
+    }
+
+    #[test]
+    fn summarize_supervise_log_dir_collects_json_and_service_stats() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "tauri-shell-log-summary-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_millis()
+        ));
+        fs::create_dir_all(&temp_root).expect("create temp root");
+
+        fs::write(
+            temp_root.join("supervise-loop.jsonl"),
+            "{\"type\":\"cycle_summary\"}\nnot-json\n{\"type\":\"final_summary\"}\n",
+        )
+        .expect("write summary log");
+        fs::write(
+            temp_root.join("tag-server.log"),
+            "cycle=1 started=true exited=false\ncycle=2 started=false exited=true\n",
+        )
+        .expect("write tag-server log");
+        fs::write(
+            temp_root.join("driver-manager.log"),
+            "cycle=1 started=true exited=false\n",
+        )
+        .expect("write driver-manager log");
+
+        let summary = summarize_supervise_log_dir(&temp_root).expect("summarize log dir");
+
+        let _ = fs::remove_dir_all(&temp_root);
+
+        assert_eq!(1, summary.cycle_summaries);
+        assert_eq!(1, summary.final_summaries);
+        assert_eq!(1, summary.parse_errors);
+        assert_eq!(2, summary.services.len());
+        assert_eq!("driver-manager", summary.services[0].service);
+        assert_eq!(1, summary.services[0].lines);
+        assert_eq!(0, summary.services[0].exited);
+        assert_eq!(0, summary.services[0].started_false);
+        assert_eq!("tag-server", summary.services[1].service);
+        assert_eq!(2, summary.services[1].lines);
+        assert_eq!(1, summary.services[1].exited);
+        assert_eq!(1, summary.services[1].started_false);
     }
 
     fn workspace_root() -> PathBuf {
