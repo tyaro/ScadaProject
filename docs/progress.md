@@ -430,6 +430,8 @@ Runtime API境界テストを強化
 - `cargo test -p preview-runtime -- --ignored`: 成功（20 passed）
 - `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true`: 成功（Run `26549909112`、Standard 4m18s / Bind-Dependent 5m16s）
 - `ruby -e "require 'yaml'; YAML.load_file('.github/workflows/ci.yml')"`: 成功（action バージョン更新後）
+- `GH_PAGER=cat gh run list --workflow ci.yml --limit 1 --json ...`: 成功（Run `26554175602` が `completed/success`）
+- `GH_PAGER=cat gh run view --job 78222413756 --log | grep -n "Node.js 20 is deprecated\|forced to run on Node.js 24"`: 一致なし（Node20 非推奨警告が消失）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
