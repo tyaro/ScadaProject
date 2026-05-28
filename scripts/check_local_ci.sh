@@ -4,6 +4,24 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
+run_with_timeout() {
+  local duration="$1"
+  shift
+
+  if command -v timeout >/dev/null 2>&1; then
+    timeout --foreground "$duration" "$@"
+    return
+  fi
+
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout --foreground "$duration" "$@"
+    return
+  fi
+
+  echo "warn: timeout command not found; running without timeout: $*"
+  "$@"
+}
+
 if [[ -s "${HOME}/.nvm/nvm.sh" ]]; then
   # Local developer shells may not have the project Node version active.
   # CI images can skip this and provide Node directly on PATH.
@@ -85,7 +103,7 @@ if [[ "${RUN_BUILDER_UI_E2E:-0}" == "1" ]]; then
   echo "== builder-ui e2e =="
   (
     cd apps/builder-ui
-    npm run test:e2e
+    run_with_timeout 10m npm run test:e2e
   )
 else
   echo "skip builder-ui e2e (set RUN_BUILDER_UI_E2E=1)"
@@ -101,7 +119,7 @@ if [[ "${RUN_RUNTIME_UI_E2E:-0}" == "1" ]]; then
   echo "== runtime-ui e2e =="
   (
     cd apps/runtime-ui
-    npm run test:e2e
+    run_with_timeout 10m npm run test:e2e
   )
 else
   echo "skip runtime-ui e2e (set RUN_RUNTIME_UI_E2E=1)"
@@ -109,10 +127,10 @@ fi
 
 if [[ "${RUN_BIND_TESTS:-0}" == "1" ]]; then
   echo "== preview-runtime bind-dependent unit tests =="
-  cargo test -p preview-runtime -- --ignored
+  run_with_timeout 10m cargo test -p preview-runtime -- --ignored
 
   echo "== preview-runtime mqtt resync log check =="
-  scripts/check_preview_runtime_mqtt_resync.sh
+  run_with_timeout 5m scripts/check_preview_runtime_mqtt_resync.sh
 else
   echo "skip bind-dependent checks (set RUN_BIND_TESTS=1)"
 fi
