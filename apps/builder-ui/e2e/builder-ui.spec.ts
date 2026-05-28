@@ -355,3 +355,51 @@ test('shows path selection failure when tauri picker returns invalid contract', 
   await page.getByTestId('pick-save-as-path-button').click()
   await expect(page.getByTestId('io-status')).toContainText('Path selection failed: invalid relative_path from tauri picker')
 })
+
+test('loads supervise log summary through tauri bridge', async ({ page }) => {
+  await page.addInitScript(() => {
+    ;(window as unknown as { __TAURI__?: Record<string, unknown> }).__TAURI__ = {
+      core: {
+        invoke: async (command: string, args: Record<string, unknown>) => {
+          if (command === 'read_supervise_log_summary') {
+            if (typeof args.log_dir !== 'string') {
+              throw new Error('log_dir must be string')
+            }
+            return {
+              cycle_summaries: 3,
+              final_summaries: 1,
+              parse_errors: 0,
+              services: [
+                {
+                  service: 'tag-server',
+                  lines: 10,
+                  exited: 1,
+                  started_false: 0,
+                },
+              ],
+            }
+          }
+
+          if (command === 'pick_screen_relative_path') {
+            return {
+              cancelled: true,
+              relative_path: null,
+            }
+          }
+
+          throw new Error(`unexpected command: ${command}`)
+        },
+      },
+    }
+  })
+
+  await page.goto('/')
+  await page.getByTestId('supervise-log-dir-field').fill('/tmp/scada-supervise-log')
+  await page.getByTestId('load-supervise-summary-button').click()
+
+  await expect(page.getByTestId('supervise-summary-status-row')).toContainText('Loaded summary from /tmp/scada-supervise-log')
+  await expect(page.getByTestId('supervise-summary-counts-row')).toContainText('cycle=3 final=1 parse_errors=0')
+  await expect(page.getByTestId('supervise-summary-services-list')).toContainText(
+    'tag-server: lines=10 exited=1 started_false=0'
+  )
+})

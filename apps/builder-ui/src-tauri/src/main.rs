@@ -1,12 +1,29 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, FilePath};
 use tauri_shell::{
     is_valid_screen_relative_path, normalize_relative_screen_path, PickScreenRelativePathResult,
 };
+
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+struct SuperviseLogSummary {
+    cycle_summaries: u64,
+    final_summaries: u64,
+    parse_errors: u64,
+    services: Vec<SuperviseLogSummaryService>,
+}
+
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+struct SuperviseLogSummaryService {
+    service: String,
+    lines: u64,
+    exited: u64,
+    started_false: u64,
+}
 
 #[tauri::command]
 fn pick_screen_relative_path(
@@ -21,7 +38,9 @@ fn pick_screen_relative_path(
         .add_filter("SCADA Screen JSON", &["json"])
         .set_title("Select screen definition");
 
-    if let Some(initial_absolute) = initial_picker_absolute_path(&project_root, initial_path.as_deref()) {
+    if let Some(initial_absolute) =
+        initial_picker_absolute_path(&project_root, initial_path.as_deref())
+    {
         if let Some(directory) = initial_absolute.parent() {
             picker = picker.set_directory(directory);
         }
@@ -39,6 +58,73 @@ fn pick_screen_relative_path(
     let relative_path = normalize_relative_screen_path(&project_root, &absolute_path)?;
 
     Ok(PickScreenRelativePathResult::selected(relative_path))
+}
+
+#[tauri::command]
+fn read_supervise_log_summary(log_dir: String) -> Result<SuperviseLogSummary, String> {
+    summarize_supervise_log_dir(Path::new(&log_dir))
+}
+
+fn summarize_supervise_log_dir(dir: &Path) -> Result<SuperviseLogSummary, String> {
+    let mut cycle_summaries = 0u64;
+    let mut final_summaries = 0u64;
+    let mut parse_errors = 0u64;
+
+    let summary_path = dir.join("supervise-loop.jsonl");
+    if summary_path.exists() {
+        let raw = fs::read_to_string(&summary_path)
+            .map_err(|error| format!("read {}: {error}", summary_path.display()))?;
+        for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+            match serde_json::from_str::<serde_json::Value>(line) {
+                Ok(value) => match value.get("type").and_then(|v| v.as_str()) {
+                    Some("cycle_summary") => cycle_summaries = cycle_summaries.saturating_add(1),
+                    Some("final_summary") => final_summaries = final_summaries.saturating_add(1),
+                    _ => {}
+                },
+                Err(_) => parse_errors = parse_errors.saturating_add(1),
+            }
+        }
+    }
+
+    let mut services = Vec::new();
+    let entries =
+        fs::read_dir(dir).map_err(|error| format!("read_dir {}: {error}", dir.display()))?;
+    for entry in entries {
+        let entry = entry
+            .map_err(|error: io::Error| format!("read_dir entry {}: {error}", dir.display()))?;
+        let path = entry.path();
+
+        if path.file_name().and_then(|name| name.to_str()) == Some("supervise-loop.jsonl") {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) != Some("log") {
+            continue;
+        }
+
+        let raw = fs::read_to_string(&path)
+            .map_err(|error| format!("read {}: {error}", path.display()))?;
+        let service = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("invalid service log file name: {}", path.display()))?
+            .to_string();
+
+        services.push(SuperviseLogSummaryService {
+            service,
+            lines: raw.lines().filter(|line| !line.trim().is_empty()).count() as u64,
+            exited: raw.matches("exited=true").count() as u64,
+            started_false: raw.matches("started=false").count() as u64,
+        });
+    }
+
+    services.sort_by(|a, b| a.service.cmp(&b.service));
+
+    Ok(SuperviseLogSummary {
+        cycle_summaries,
+        final_summaries,
+        parse_errors,
+        services,
+    })
 }
 
 fn resolve_project_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -98,7 +184,10 @@ fn dialog_file_path_to_path_buf(path: FilePath) -> Option<PathBuf> {
     }
 }
 
-fn initial_picker_absolute_path(project_root: &Path, initial_path: Option<&str>) -> Option<PathBuf> {
+fn initial_picker_absolute_path(
+    project_root: &Path,
+    initial_path: Option<&str>,
+) -> Option<PathBuf> {
     let raw = initial_path?.trim();
     if !is_valid_screen_relative_path(raw) {
         return None;
@@ -109,7 +198,10 @@ fn initial_picker_absolute_path(project_root: &Path, initial_path: Option<&str>)
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![pick_screen_relative_path])
+        .invoke_handler(tauri::generate_handler![
+            pick_screen_relative_path,
+            read_supervise_log_summary
+        ])
         .run(tauri::generate_context!())
         .expect("failed to run builder-ui tauri shell");
 }
@@ -176,10 +268,13 @@ mod tests {
     #[test]
     fn initial_picker_absolute_path_accepts_valid_relative_path() {
         let root = Path::new("/tmp/scada-project");
-        let resolved = initial_picker_absolute_path(root, Some("config/screens/mock-main.screen.json"));
+        let resolved =
+            initial_picker_absolute_path(root, Some("config/screens/mock-main.screen.json"));
 
         assert_eq!(
-            Some(Path::new("/tmp/scada-project/config/screens/mock-main.screen.json").to_path_buf()),
+            Some(
+                Path::new("/tmp/scada-project/config/screens/mock-main.screen.json").to_path_buf()
+            ),
             resolved
         );
     }
@@ -188,8 +283,49 @@ mod tests {
     fn initial_picker_absolute_path_rejects_invalid_relative_path() {
         let root = Path::new("/tmp/scada-project");
 
-        assert_eq!(None, initial_picker_absolute_path(root, Some("../outside.screen.json")));
-        assert_eq!(None, initial_picker_absolute_path(root, Some("/tmp/absolute.screen.json")));
-        assert_eq!(None, initial_picker_absolute_path(root, Some("config/other/mock-main.screen.json")));
+        assert_eq!(
+            None,
+            initial_picker_absolute_path(root, Some("../outside.screen.json"))
+        );
+        assert_eq!(
+            None,
+            initial_picker_absolute_path(root, Some("/tmp/absolute.screen.json"))
+        );
+        assert_eq!(
+            None,
+            initial_picker_absolute_path(root, Some("config/other/mock-main.screen.json"))
+        );
+    }
+
+    #[test]
+    fn summarize_supervise_log_dir_collects_summary_and_service_stats() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("scada-supervise-summary-{suffix}"));
+        fs::create_dir_all(&root).expect("create log dir");
+        fs::write(
+            root.join("supervise-loop.jsonl"),
+            "{\"type\":\"cycle_summary\"}\nnot-json\n{\"type\":\"final_summary\"}\n",
+        )
+        .expect("write summary");
+        fs::write(
+            root.join("tag-server.log"),
+            "cycle=1 started=true exited=false\ncycle=2 started=false exited=true\n",
+        )
+        .expect("write service log");
+
+        let summary = summarize_supervise_log_dir(&root).expect("summarize");
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(1, summary.cycle_summaries);
+        assert_eq!(1, summary.final_summaries);
+        assert_eq!(1, summary.parse_errors);
+        assert_eq!(1, summary.services.len());
+        assert_eq!("tag-server", summary.services[0].service);
+        assert_eq!(2, summary.services[0].lines);
+        assert_eq!(1, summary.services[0].exited);
+        assert_eq!(1, summary.services[0].started_false);
     }
 }

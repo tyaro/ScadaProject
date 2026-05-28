@@ -12,7 +12,12 @@
     type SerializedScreenObject,
     type ScreenModifyRuleCondition,
   } from './contracts/builderApi'
-  import { hasTauriFileDialogBridge, pickScreenRelativePath } from './tauriFileDialog'
+  import {
+    hasTauriFileDialogBridge,
+    pickScreenRelativePath,
+    readSuperviseLogSummary,
+    type SuperviseLogSummary,
+  } from './tauriFileDialog'
 
   type ParsedTargetPath = {
     objectId: string | null
@@ -138,6 +143,10 @@
   let canvasHeight = $state(720)
   let saveAsRelativePath = $state('config/screens/mock-main.screen.json')
   let runtimePreviewStatus = $state('No runtime preview yet')
+  let superviseLogDir = $state('/tmp/scada-supervise-log')
+  let superviseSummary = $state<SuperviseLogSummary | null>(null)
+  let superviseSummaryStatus = $state('No supervise log summary loaded')
+  let superviseSummaryLoading = $state(false)
   let objectField: HTMLInputElement | null = null
   let propertyField: HTMLSelectElement | null = null
   let jsonFileInput: HTMLInputElement | null = null
@@ -559,6 +568,35 @@
     }
   }
 
+  async function loadSuperviseLogSummaryViaTauri() {
+    const logDir = superviseLogDir.trim()
+    if (logDir === '') {
+      superviseSummaryStatus = 'Supervise summary failed: log directory is required'
+      return
+    }
+
+    superviseSummaryLoading = true
+    try {
+      const summary = await readSuperviseLogSummary(logDir)
+      if (!summary) {
+        superviseSummaryStatus = 'Tauri bridge unavailable: running in web mode'
+        superviseSummary = null
+        return
+      }
+
+      superviseSummary = summary
+      superviseSummaryStatus = `Loaded summary from ${logDir}`
+    } catch (error) {
+      superviseSummary = null
+      superviseSummaryStatus =
+        error instanceof Error
+          ? `Supervise summary failed: ${error.message}`
+          : 'Supervise summary failed'
+    } finally {
+      superviseSummaryLoading = false
+    }
+  }
+
   function applyLoadedScreenDefinition(parsed: SerializedScreenDefinition) {
     schemaVersion = parsed.schema_version
     screenId = parsed.screen_id
@@ -960,6 +998,43 @@
         <div class="result-row compact project-path-row" data-testid="runtime-preview-status-row">
           <span>Runtime Preview</span>
           <code>{runtimePreviewStatus}</code>
+        </div>
+        <div class="supervise-summary" data-testid="supervise-summary-panel">
+          <h4>Supervisor Log Summary</h4>
+          <label class="field">
+            <span>Log Directory</span>
+            <input data-testid="supervise-log-dir-field" bind:value={superviseLogDir} type="text" />
+          </label>
+          <div class="project-io-actions">
+            <button
+              class="secondary"
+              type="button"
+              data-testid="load-supervise-summary-button"
+              onclick={loadSuperviseLogSummaryViaTauri}
+              disabled={superviseSummaryLoading}
+            >
+              {superviseSummaryLoading ? 'Loading summary...' : 'Load supervise summary'}
+            </button>
+          </div>
+          <div class="result-row compact project-path-row" data-testid="supervise-summary-status-row">
+            <span>Summary Status</span>
+            <code>{superviseSummaryStatus}</code>
+          </div>
+          {#if superviseSummary}
+            <div class="result-row compact project-path-row" data-testid="supervise-summary-counts-row">
+              <span>Counts</span>
+              <code>
+                cycle={superviseSummary.cycle_summaries} final={superviseSummary.final_summaries} parse_errors={superviseSummary.parse_errors}
+              </code>
+            </div>
+            <ul class="hint-list" data-testid="supervise-summary-services-list">
+              {#each superviseSummary.services as service}
+                <li>
+                  {service.service}: lines={service.lines} exited={service.exited} started_false={service.started_false}
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </div>
         {#if !isScreenIdValid(screenId)}
           <p class="inline-error" data-testid="screen-id-validation-message">

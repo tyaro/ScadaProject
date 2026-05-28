@@ -261,6 +261,10 @@ Runtime API境界テストを強化
   - Builder-Runtime 横断で使う Tauri ファイル選択I/F（`relative_path` 正規化を Tauri Shell が担当し、Save As と Runtime preview の双方で同一値を利用する方針）を `docs/scada_basic_design.md` に明記した
   - Builder UI に Tauri invoke ブリッジ（`pick_screen_relative_path`）の呼び出し配線を追加し、Tauri利用時は Save As パス入力をダイアログ選択結果で更新できるようにした
   - `apps/builder-ui` の E2E を7ケースへ拡張し、Tauri invoke モック経由で Save As パス更新が反映される回帰を固定化した
+  - `apps/builder-ui/src-tauri` に `read_supervise_log_summary` command を追加し、`supervise-loop.jsonl`（cycle/final/parse error）と `*.log`（service別 lines/exited/started_false）を集計して返す最小導線を実装した
+  - `apps/builder-ui/src/tauriFileDialog.ts` に `readSuperviseLogSummary` bridge と契約型ガードを追加し、Tauri command応答形の崩れをUI側で検知できるようにした
+  - Builder UI に `Supervisor Log Summary` パネル（log dir入力、Tauri経由ロード、counts/service一覧表示）を追加し、監視ログ集計CLI相当の結果を最小UIで確認できるようにした
+  - `apps/builder-ui` の E2E を10ケースへ拡張し、Tauri bridge経由の supervise summary 表示回帰を固定化した
   - `crates/tauri-shell` に `normalize_relative_screen_path` / `is_valid_screen_relative_path` を追加し、`config/screens/*.screen.json` 制約と project root 外パス拒否を共通ロジックとして固定化した
   - Tauri command の返却契約として再利用する `PickScreenRelativePathResult` 型を `tauri-shell` へ追加し、command実装前にテスト可能な境界を先に用意した
   - `tauri-shell` CLI に `--pick-screen-relative-path` を追加し、`--project-root` と `--absolute-path`（または `--cancel`）から `PickScreenRelativePathResult` JSON を返す command 互換経路を実装した
@@ -426,7 +430,7 @@ Runtime API境界テストを強化
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
 | REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
 | Runtime REST APIからMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Preview Runtime -> Tag Server -> Driver Manager -> Mock Driver` で `DriverAck` まで確認済み。 |
-| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログ、`--supervise-log-dir` によるサービス別ログ永続化、`--supervise-log-summary` / `--supervise-log-summary-json` による集計CLI、および `fail-on` オプションによる異常時非0終了を実装済み。UI表示は後続。 |
+| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログ、`--supervise-log-dir` によるサービス別ログ永続化、`--supervise-log-summary` / `--supervise-log-summary-json` による集計CLI、および `fail-on` オプションによる異常時非0終了を実装済み。Builder UIに最小 summary表示（log dir入力 + counts/service一覧）を追加済みで、本格運用UIは後続。 |
 
 ## フェーズ1着手条件
 
@@ -475,6 +479,10 @@ Runtime API境界テストを強化
 - `GH_PAGER=cat gh run view 26558474280 --json status,conclusion,event,headSha,jobs,url`: 成功（`workflow_dispatch/completed/success`, Standard Checks success, Bind-Dependent skipped を確認）
 - `GH_PAGER=cat gh run view --job 78235525649 --log | grep -n "RUN_SUPERVISE_LOG_CHECKS\|tauri-shell supervise-log-summary checks"`: 成功（`RUN_SUPERVISE_LOG_CHECKS: 1` と `== tauri-shell supervise-log-summary checks ==` を確認）
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 3 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26558474280` と push Run `26558406791` がともに `completed/success` で確定）
+- `cd apps/builder-ui && npm run check`: 成功（Supervisor Log Summary UI追加後）
+- `cd apps/builder-ui && npm run tauri:check`: 成功（`read_supervise_log_summary` command追加後）
+- `cd apps/builder-ui && npm run test:e2e`: 成功（10 passed、supervise summary bridge回帰を含む）
+- `cargo test --manifest-path apps/builder-ui/src-tauri/Cargo.toml`: 成功（7 passed、supervise summary集計テストを含む）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
