@@ -378,6 +378,8 @@ Runtime API境界テストを強化
   - `supervise-loop.jsonl` の `cycle_summary` / `final_summary` 件数とJSON parse error件数を集計
   - サービス別 `*.log` の行数、`exited=true` 件数、`started=false` 件数を集計
   - `--supervise-log-summary-json` を追加し、同じ集計結果を単一JSONオブジェクトで出力可能にした
+  - `--supervise-log-summary-fail-on-parse-error` を追加し、`parse_errors > 0` で非0終了できるようにした
+  - `--supervise-log-summary-fail-on-service-exit` を追加し、`exited=true` または `started=false` を検出したら非0終了できるようにした
 - `tauri-shell` CLIヘルプ整備
   - `--help` / `-h` で supervisor系オプション説明を表示
   - ヘルプ文言の `schema_version` と `SERVICE_CONFIG_SCHEMA_VERSION` の同期テストを追加
@@ -421,7 +423,7 @@ Runtime API境界テストを強化
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
 | REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
 | Runtime REST APIからMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Preview Runtime -> Tag Server -> Driver Manager -> Mock Driver` で `DriverAck` まで確認済み。 |
-| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログ、`--supervise-log-dir` によるサービス別ログ永続化、`--supervise-log-summary` / `--supervise-log-summary-json` による集計CLIを実装済み。UI表示は後続。 |
+| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログ、`--supervise-log-dir` によるサービス別ログ永続化、`--supervise-log-summary` / `--supervise-log-summary-json` による集計CLI、および `fail-on` オプションによる異常時非0終了を実装済み。UI表示は後続。 |
 
 ## フェーズ1着手条件
 
@@ -458,6 +460,7 @@ Runtime API境界テストを強化
 - `cargo test -p tauri-shell`: 成功（`--supervise-log-dir` 追加後、`supervise_loop_writes_persistent_logs_when_log_dir_is_set` を含む4 integration tests通過）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp>`: 成功（`summary dir=... cycle_summaries=1 final_summaries=1 parse_errors=0` と `service=tag-server lines=2 exited=1 started_false=1` を確認）
 - `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-json`: 成功（`{"cycle_summaries":1,...,"services":[...]}` 形式のJSON出力を確認）
+- `cargo run -q -p tauri-shell -- --supervise-log-summary --supervise-log-dir <tmp> --supervise-log-summary-fail-on-parse-error`: 期待どおり非0終了（`parse errors detected (1)` と終了コード `1` を確認）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`

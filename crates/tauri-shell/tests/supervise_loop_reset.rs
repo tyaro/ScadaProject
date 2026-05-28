@@ -317,3 +317,85 @@ fn supervise_log_summary_can_emit_json() {
         stdout
     );
 }
+
+#[test]
+fn supervise_log_summary_fails_on_parse_error_with_flag() {
+    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
+    let log_dir = std::env::temp_dir().join(format!(
+        "tauri-shell-supervise-summary-fail-parse-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_millis()
+    ));
+    fs::create_dir_all(&log_dir).expect("create temp log dir");
+    fs::write(
+        log_dir.join("supervise-loop.jsonl"),
+        "{\"type\":\"cycle_summary\"}\nnot-json\n",
+    )
+    .expect("write jsonl");
+
+    let output = Command::new(&tauri_shell_bin)
+        .arg("--supervise-log-summary")
+        .arg("--supervise-log-dir")
+        .arg(&log_dir)
+        .arg("--supervise-log-summary-fail-on-parse-error")
+        .output()
+        .expect("run supervise-log-summary fail-on-parse-error");
+
+    let _ = fs::remove_dir_all(&log_dir);
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit when parse error exists\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("parse errors detected"),
+        "missing parse error failure reason in stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn supervise_log_summary_fails_on_service_exit_with_flag() {
+    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
+    let log_dir = std::env::temp_dir().join(format!(
+        "tauri-shell-supervise-summary-fail-service-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_millis()
+    ));
+    fs::create_dir_all(&log_dir).expect("create temp log dir");
+    fs::write(
+        log_dir.join("tag-server.log"),
+        "cycle=1 started=true exited=true\n",
+    )
+    .expect("write service log");
+
+    let output = Command::new(&tauri_shell_bin)
+        .arg("--supervise-log-summary")
+        .arg("--supervise-log-dir")
+        .arg(&log_dir)
+        .arg("--supervise-log-summary-fail-on-service-exit")
+        .output()
+        .expect("run supervise-log-summary fail-on-service-exit");
+
+    let _ = fs::remove_dir_all(&log_dir);
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit when service exit exists\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("service exits detected"),
+        "missing service exit failure reason in stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

@@ -201,6 +201,12 @@ fn main() {
     if args.iter().any(|arg| arg == "--supervise-log-summary") {
         let supervise_log_summary_json =
             args.iter().any(|arg| arg == "--supervise-log-summary-json");
+        let fail_on_parse_error = args
+            .iter()
+            .any(|arg| arg == "--supervise-log-summary-fail-on-parse-error");
+        let fail_on_service_exit = args
+            .iter()
+            .any(|arg| arg == "--supervise-log-summary-fail-on-service-exit");
         let supervise_log_dir = match arg_value(&args, "--supervise-log-dir") {
             Some(path) => PathBuf::from(path),
             None => {
@@ -227,12 +233,23 @@ fn main() {
                 summary.final_summaries,
                 summary.parse_errors
             );
-            for service in summary.services {
+            for service in &summary.services {
                 println!(
                     "service={} lines={} exited={} started_false={}",
                     service.service, service.lines, service.exited, service.started_false
                 );
             }
+        }
+        if fail_on_parse_error && summary.parse_errors > 0 {
+            eprintln!(
+                "tauri-shell supervise-log-summary failed: parse errors detected ({})",
+                summary.parse_errors
+            );
+            std::process::exit(1);
+        }
+        if fail_on_service_exit && summary_has_service_issues(&summary) {
+            eprintln!("tauri-shell supervise-log-summary failed: service exits detected");
+            std::process::exit(1);
         }
         return;
     }
@@ -277,6 +294,10 @@ supervise-log-summary:
     --supervise-log-summary
     --supervise-log-dir <path>          read persisted supervise logs from directory
     --supervise-log-summary-json        emit log summary as one JSON object
+    --supervise-log-summary-fail-on-parse-error
+                                                                            exit non-zero when parse_errors > 0
+    --supervise-log-summary-fail-on-service-exit
+                                                                            exit non-zero when any service has exited=true or started=false
 
 service-config:
   --service-config <path>             schema_version must be {}
@@ -829,6 +850,13 @@ fn summarize_supervise_log_dir(dir: &Path) -> Result<SuperviseLogSummary, String
     })
 }
 
+fn summary_has_service_issues(summary: &SuperviseLogSummary) -> bool {
+    summary
+        .services
+        .iter()
+        .any(|service| service.exited > 0 || service.started_false > 0)
+}
+
 #[derive(Debug, Deserialize)]
 struct ServicePlanFile {
     schema_version: String,
@@ -1178,6 +1206,48 @@ mod tests {
         assert_eq!(2, summary.services[1].lines);
         assert_eq!(1, summary.services[1].exited);
         assert_eq!(1, summary.services[1].started_false);
+    }
+
+    #[test]
+    fn summary_has_service_issues_returns_true_when_exit_or_start_failure_exists() {
+        let summary = SuperviseLogSummary {
+            cycle_summaries: 1,
+            final_summaries: 1,
+            parse_errors: 0,
+            services: vec![
+                ServiceLogSummary {
+                    service: "driver-manager".to_string(),
+                    lines: 2,
+                    exited: 0,
+                    started_false: 0,
+                },
+                ServiceLogSummary {
+                    service: "tag-server".to_string(),
+                    lines: 2,
+                    exited: 1,
+                    started_false: 0,
+                },
+            ],
+        };
+
+        assert!(summary_has_service_issues(&summary));
+    }
+
+    #[test]
+    fn summary_has_service_issues_returns_false_when_services_are_clean() {
+        let summary = SuperviseLogSummary {
+            cycle_summaries: 1,
+            final_summaries: 1,
+            parse_errors: 0,
+            services: vec![ServiceLogSummary {
+                service: "tag-server".to_string(),
+                lines: 2,
+                exited: 0,
+                started_false: 0,
+            }],
+        };
+
+        assert!(!summary_has_service_issues(&summary));
     }
 
     fn workspace_root() -> PathBuf {
