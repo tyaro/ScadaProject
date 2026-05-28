@@ -180,3 +180,73 @@ fn supervise_loop_can_emit_json_summaries() {
         stdout
     );
 }
+
+#[test]
+fn supervise_loop_writes_persistent_logs_when_log_dir_is_set() {
+    let tauri_shell_bin = std::path::PathBuf::from(env!("CARGO_BIN_EXE_tauri-shell"));
+    let bin_dir = tauri_shell_bin
+        .parent()
+        .expect("tauri-shell binary parent")
+        .to_path_buf();
+    let log_dir = std::env::temp_dir().join(format!(
+        "tauri-shell-supervise-logs-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_millis()
+    ));
+
+    let output = Command::new(&tauri_shell_bin)
+        .arg("--supervise-loop")
+        .arg("--bin-dir")
+        .arg(&bin_dir)
+        .arg("--supervise-interval-ms")
+        .arg("100")
+        .arg("--supervise-cycles")
+        .arg("1")
+        .arg("--supervise-log-dir")
+        .arg(&log_dir)
+        .output()
+        .expect("run tauri-shell supervise-loop with log dir");
+
+    assert!(
+        output.status.success(),
+        "tauri-shell should succeed with supervise log dir\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let summary_path = log_dir.join("supervise-loop.jsonl");
+    let summary = fs::read_to_string(&summary_path).expect("read supervise-loop.jsonl");
+    assert!(
+        summary.contains("\"type\":\"cycle_summary\"")
+            && summary.contains("\"type\":\"final_summary\""),
+        "summary log missing expected entries:\n{}",
+        summary
+    );
+
+    let mut service_log_found = false;
+    for entry in fs::read_dir(&log_dir).expect("read log dir") {
+        let entry = entry.expect("dir entry");
+        let path = entry.path();
+        if path.file_name().and_then(|name| name.to_str()) == Some("supervise-loop.jsonl") {
+            continue;
+        }
+        if path.extension().and_then(|ext| ext.to_str()) == Some("log") {
+            let content = fs::read_to_string(&path).expect("read service log");
+            if content.contains("cycle=1") {
+                service_log_found = true;
+                break;
+            }
+        }
+    }
+
+    let _ = fs::remove_dir_all(&log_dir);
+
+    assert!(
+        service_log_found,
+        "expected at least one per-service log file with cycle status in {}",
+        log_dir.display()
+    );
+}

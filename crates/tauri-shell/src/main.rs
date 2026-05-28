@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -229,6 +230,7 @@ supervise-loop:
   --restart-reset-after-ms <ms>       default: 0 (disabled)
   --supervise-verbose                 per-service detailed logs
   --supervise-summary-json            emit cycle_summary/final_summary as JSON lines
+    --supervise-log-dir <path>          persist cycle summaries and service statuses to files
   --supervise-fail-on-start-error     exit non-zero if any service start fails
   --supervise-fail-on-exhausted-restart
                                       exit non-zero if restart attempts are exhausted
@@ -371,6 +373,11 @@ fn supervise_loop_with_optional_rumqttd(
     cycles: u64,
 ) -> Result<(), String> {
     let plans = build_plans(args, bin_dir, config)?;
+    let supervise_log_dir = arg_value(args, "--supervise-log-dir").map(PathBuf::from);
+    if let Some(dir) = &supervise_log_dir {
+        fs::create_dir_all(dir)
+            .map_err(|error| format!("create supervise log dir {}: {error}", dir.display()))?;
+    }
     let restart_exited = args.iter().any(|arg| arg == "--restart-exited");
     let supervise_verbose = args.iter().any(|arg| arg == "--supervise-verbose");
     let supervise_summary_json = args.iter().any(|arg| arg == "--supervise-summary-json");
@@ -434,6 +441,9 @@ fn supervise_loop_with_optional_rumqttd(
         let mut restart_reset_count = 0u64;
         for (plan, child) in &mut children {
             let status = tauri_shell::poll_child_status(child);
+            if let Some(dir) = &supervise_log_dir {
+                append_service_status_log(dir, cycle, &status)?;
+            }
             if supervise_verbose {
                 println!(
                     "cycle={} {} started={} exited={} exit_code={:?} {}",
@@ -536,22 +546,23 @@ fn supervise_loop_with_optional_rumqttd(
                 restart_failed_count,
                 restart_reset_count,
             );
+            let cycle_summary_json = json!({
+                "type": "cycle_summary",
+                "cycle": cycle,
+                "running": running_count,
+                "exited": exited_count,
+                "restarted": restarted_count,
+                "restart_exhausted": restart_exhausted_count,
+                "restart_failed": restart_failed_count,
+                "restart_reset": restart_reset_count,
+                "startup_errors": startup_error_count,
+                "events": events,
+            });
+            if let Some(dir) = &supervise_log_dir {
+                append_summary_json_log(dir, &cycle_summary_json)?;
+            }
             if supervise_summary_json {
-                println!(
-                    "{}",
-                    json!({
-                        "type": "cycle_summary",
-                        "cycle": cycle,
-                        "running": running_count,
-                        "exited": exited_count,
-                        "restarted": restarted_count,
-                        "restart_exhausted": restart_exhausted_count,
-                        "restart_failed": restart_failed_count,
-                        "restart_reset": restart_reset_count,
-                        "startup_errors": startup_error_count,
-                        "events": events,
-                    })
-                );
+                println!("{}", cycle_summary_json);
             } else {
                 println!(
                     "cycle={} summary running={} exited={} restarted={} restart_exhausted={} restart_failed={} restart_reset={} startup_errors={} events={}",
@@ -593,24 +604,25 @@ fn supervise_loop_with_optional_rumqttd(
         total_restart_failed_count,
         total_restart_reset_count,
     );
+    let final_summary_json = json!({
+        "type": "final_summary",
+        "cycles": cycle,
+        "running_total": total_running_count,
+        "exited_total": total_exited_count,
+        "restarted_total": total_restarted_count,
+        "restart_exhausted_total": total_restart_exhausted_count,
+        "restart_failed_total": total_restart_failed_count,
+        "restart_reset_total": total_restart_reset_count,
+        "startup_errors": startup_error_count,
+        "fail_on_start_error": saw_start_error,
+        "fail_on_exhausted_restart": saw_restart_exhausted,
+        "events": final_events,
+    });
+    if let Some(dir) = &supervise_log_dir {
+        append_summary_json_log(dir, &final_summary_json)?;
+    }
     if supervise_summary_json {
-        println!(
-            "{}",
-            json!({
-                "type": "final_summary",
-                "cycles": cycle,
-                "running_total": total_running_count,
-                "exited_total": total_exited_count,
-                "restarted_total": total_restarted_count,
-                "restart_exhausted_total": total_restart_exhausted_count,
-                "restart_failed_total": total_restart_failed_count,
-                "restart_reset_total": total_restart_reset_count,
-                "startup_errors": startup_error_count,
-                "fail_on_start_error": saw_start_error,
-                "fail_on_exhausted_restart": saw_restart_exhausted,
-                "events": final_events,
-            })
-        );
+        println!("{}", final_summary_json);
     } else {
         println!(
             "final_summary cycles={} running_total={} exited_total={} restarted_total={} restart_exhausted_total={} restart_failed_total={} restart_reset_total={} startup_errors={} fail_on_start_error={} fail_on_exhausted_restart={} events={}",
@@ -665,6 +677,33 @@ fn format_cycle_events(
         return "NONE".to_string();
     }
     events.join(",")
+}
+
+fn append_summary_json_log(dir: &Path, value: &serde_json::Value) -> Result<(), String> {
+    let path = dir.join("supervise-loop.jsonl");
+    append_line(&path, &value.to_string())
+}
+
+fn append_service_status_log(
+    dir: &Path,
+    cycle: u64,
+    status: &tauri_shell::SupervisedServiceStatus,
+) -> Result<(), String> {
+    let path = dir.join(format!("{}.log", status.service));
+    let line = format!(
+        "cycle={} started={} exited={} exit_code={:?} {}",
+        cycle, status.started, status.exited, status.exit_code, status.message
+    );
+    append_line(&path, &line)
+}
+
+fn append_line(path: &Path, line: &str) -> Result<(), String> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|error| format!("open {}: {error}", path.display()))?;
+    writeln!(file, "{line}").map_err(|error| format!("write {}: {error}", path.display()))
 }
 
 #[derive(Debug, Deserialize)]

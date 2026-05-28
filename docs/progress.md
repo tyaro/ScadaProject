@@ -369,6 +369,10 @@ Runtime API境界テストを強化
   - 終了時に `final_summary` 1行を出力（全サイクル集計 + fail判定フラグ + events）
 - `tauri-shell` 監視ループのJSON要約出力追加
   - `--supervise-summary-json` 指定時に `cycle_summary` / `final_summary` をJSON行で出力
+- `tauri-shell` 監視ループのログ永続化追加（最小版）
+  - `--supervise-log-dir <path>` を追加
+  - `supervise-loop.jsonl` に `cycle_summary` / `final_summary` を追記保存
+  - `<service>.log` にサイクルごとの started/exited/exit_code/message を追記保存
 - `tauri-shell` CLIヘルプ整備
   - `--help` / `-h` で supervisor系オプション説明を表示
   - ヘルプ文言の `schema_version` と `SERVICE_CONFIG_SCHEMA_VERSION` の同期テストを追加
@@ -412,7 +416,7 @@ Runtime API境界テストを強化
 | MQTT over WebSocketでタグ値を購読できる | 完了 | `rumqttd` WebSocketと `preview-runtime --mqtt-subscribe` の縦断確認済み。 |
 | REST APIでMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Tag Server -> Driver Manager /api/v1/driver-writes -> Mock Driver` で `DriverAck` まで確認済み。 |
 | Runtime REST APIからMock Driverへの書き込み要求を送れる | 完了 | `POST /api/v1/control-commands -> Preview Runtime -> Tag Server -> Driver Manager -> Mock Driver` で `DriverAck` まで確認済み。 |
-| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログは実装済み。サービス別ログ永続化やUI表示は後続。 |
+| サービスごとのログを確認できる | 一部完了 | supervisor要約/詳細/JSONログに加えて `--supervise-log-dir` によるサービス別ログ永続化を実装済み。UI表示は後続。 |
 
 ## フェーズ1着手条件
 
@@ -446,6 +450,7 @@ Runtime API境界テストを強化
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 5 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26555752127` が現在HEAD `142729b` に対して `push/completed/success` で確定）
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 4 --json databaseId,status,conclusion,displayTitle,event,url`: 成功（Run `26556311169` と `26556404715` が `push/completed/success` で確定）
 - `GH_PAGER=cat gh run list --workflow ci.yml --limit 5 --json databaseId,status,conclusion,displayTitle,event,url,headSha`: 成功（Run `26556625299` が現在HEAD `06c038d` に対して `push/completed/success` で確定）
+- `cargo test -p tauri-shell`: 成功（`--supervise-log-dir` 追加後、`supervise_loop_writes_persistent_logs_when_log_dir_is_set` を含む4 integration tests通過）
 
 - `rustc --version --verbose`: `rustc 1.95.0`, host `aarch64-apple-darwin`
 - `cargo --version --verbose`: `cargo 1.95.0`, host `aarch64-apple-darwin`
