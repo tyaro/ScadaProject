@@ -28,6 +28,7 @@ jobs:
   standard:
     name: Standard Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -69,6 +70,7 @@ jobs:
   bind-dependent:
     name: Bind-Dependent Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_bind_tests == 'true')
     steps:
       - name: Checkout
