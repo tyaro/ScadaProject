@@ -427,9 +427,9 @@ Runtime API境界テストを強化
 
 ## 次に行うこと
 
-1. 実行中の workflow_dispatch Run `26571045355`（`run_bind_tests=true` / `run_builder_ui_e2e=true` / `run_supervise_log_checks=true`）の完了を確認し、結果を `最新検証` に反映する。
-2. `tauri-shell` の `supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` を専用ジョブまたは夜間ジョブで個別実行し、`#[ignore]` としたケースの継続監視方法を決める。
-3. `apps/builder-ui/src-tauri` の picker 非同期化に関する単体テスト（cancel/selected/error）を追加し、UI側 E2E と合わせて境界回帰を強化する。
+1. `tauri-shell` の `supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` を専用ジョブまたは夜間ジョブで個別実行し、`#[ignore]` としたケースの継続監視方法を決める。
+2. `apps/builder-ui/src-tauri` の picker 非同期化に関する単体テスト（cancel/selected/error）を追加し、UI側 E2E と合わせて境界回帰を強化する。
+3. `gh workflow run ci.yml` の結果を定期レビューし、`schedule` 実行（nightly）で Builder/Runtime 拡張チェックが連続成功しているかを追跡する。
 
 ## フェーズ0完了条件棚卸し
 
@@ -516,7 +516,10 @@ Runtime API境界テストを強化
 - `docs/builder_ui_tauri_runbook.md` 5.3（不正パス拒否）手動検証: 成功（不正値非上書きと `Path selection failed: ...` 表示を確認）
 - `cargo test -p tauri-shell --test supervise_loop_reset`: 成功（7 passed、`supervise_loop_fails_when_restart_is_exhausted_with_fail_flag` の単体実行確認）
 - `RUN_RUNTIME_UI_E2E=1 RUN_BIND_TESTS=1 RUN_BUILDER_UI_E2E=1 RUN_SUPERVISE_LOG_CHECKS=1 scripts/check_local_ci.sh`: 成功（builder-ui e2e 15 passed、runtime-ui e2e 21 passed、preview-runtime ignored tests 20 passed、supervise-log checks を含む）
-- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true -f run_supervise_log_checks=true`: 実行（Run `26571045355`、監視継続中）
+- `gh workflow run ci.yml -f run_bind_tests=true -f run_builder_ui_e2e=true -f run_supervise_log_checks=true`: 実行（Run `26571045355`）
+- `gh api repos/tyaro/ScadaProject/actions/runs/26571045355 --jq ...`: 成功（`completed/success`, `workflow_dispatch`, `head_sha=153f39e...`）
+- `gh api repos/tyaro/ScadaProject/actions/runs/26571045355/jobs --jq ...`: 成功（`Standard Checks=completed/success`, `Bind-Dependent Checks=completed/success`）
+- `gh api repos/tyaro/ScadaProject/actions/runs --jq ...`: 成功（最新CIで `schedule` Run `26600339600` と `push` Run `26571134072` がともに `completed/success`）
 - `cd apps/builder-ui && npm run check`: 成功（I/O status 専用行の testid 追加後）
 - `cd apps/builder-ui && npm run test:e2e`: 成功（16 passed、pickerキャンセル時 `File selection cancelled` と `I/O Status` 行表示回帰を含む）
 
